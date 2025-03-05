@@ -1,9 +1,39 @@
-const API_BASE_URL = 'http://localhost:3000/api'; // Adjust if your backend is on a different port
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000/api';
 
 export const fetchEmployees = async () => {
   const response = await fetch(`${API_BASE_URL}/employees`);
   if (!response.ok) {
     throw new Error('Failed to fetch employees');
+  }
+  return response.json();
+};
+
+export const fetchEmployeePayHistory = async (employeeId) => {
+  const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/pay-history`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch employee pay history');
+  }
+  return response.json();
+};
+
+export const addEmployeePayHistory = async (employeeId, payHistoryData) => {
+  const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/pay-history`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payHistoryData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to add employee pay history');
+  }
+  return response.json();
+};
+
+export const checkPayRateChanges = async (startDate, endDate) => {
+  const response = await fetch(`${API_BASE_URL}/pay-rate-changes?start_date=${startDate}&end_date=${endDate}`);
+  if (!response.ok) {
+    throw new Error('Failed to check pay rate changes');
   }
   return response.json();
 };

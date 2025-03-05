@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useDropzone } from 'react-dropzone';
 import html2pdf from 'html2pdf.js';
@@ -9,7 +9,24 @@ import { Button } from './ui/button';
 const ExcelInvoiceGenerator = () => {
   const [invoices, setInvoices] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [dataSource, setDataSource] = useState('upload'); // 'upload' or 'processed'
   const invoiceRefs = useRef({});
+  
+  // Check for processed timesheet data in localStorage on component mount
+  useEffect(() => {
+    const processedData = localStorage.getItem('processedTimesheetData');
+    if (processedData) {
+      try {
+        const parsedData = JSON.parse(processedData);
+        if (parsedData && parsedData.length > 0) {
+          setDataSource('processed');
+          processTimesheetData(parsedData);
+        }
+      } catch (error) {
+        console.error('Error parsing processed timesheet data:', error);
+      }
+    }
+  }, []);
 
   const businessInfo = {
     name: "Twenty4 Services LLC",
@@ -21,6 +38,21 @@ const ExcelInvoiceGenerator = () => {
     email: "kim@twenty4services.com",
     paymentTerms: "Net 30",
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()
+  };
+
+  // Process data from the TimesheetProcessor component
+  const processTimesheetData = (data) => {
+    setIsLoading(true);
+    try {
+      const processedInvoices = processData(data);
+      setInvoices(processedInvoices);
+      // Clear the localStorage data to prevent reprocessing on refresh
+      localStorage.removeItem('processedTimesheetData');
+    } catch (error) {
+      console.error('Error processing timesheet data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const processExcelFile = useCallback((file) => {
@@ -41,6 +73,94 @@ const ExcelInvoiceGenerator = () => {
   }, []);
 
   const processData = (data) => {
+    // Check if data is already in JSON format (from TimesheetProcessor)
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && !Array.isArray(data[0])) {
+      return processJsonData(data);
+    } else {
+      // Process Excel data (from file upload)
+      return processExcelData(data);
+    }
+  };
+
+  // Process data from TimesheetProcessor (JSON format)
+  const processJsonData = (data) => {
+    const invoices = {};
+
+    for (const row of data) {
+      const invoiceNumber = row['INV #'];
+      const employee = row['EMPLOYEE'];
+      const payType = row['PAY TYPE'];
+      const activityCode = row['Activity Code'] || '';
+      const activityDescription = row['Activity Description'] || '';
+      
+      if (!invoices[invoiceNumber]) {
+        invoices[invoiceNumber] = {
+          jobName: row['JOB NAME'],
+          jobNumber: row['JOB NUMBER'],
+          weekEnding: row['WEEK ENDING'],
+          employees: {},
+          clientName: "CEC Facilities Group",
+          clientAddress: "1275 Valley View Lane",
+          clientCity: "Irving",
+          clientState: "TX",
+          clientZip: "75061"
+        };
+      }
+
+      if (!invoices[invoiceNumber].employees[employee]) {
+        invoices[invoiceNumber].employees[employee] = {
+          activities: {}
+        };
+      }
+
+      // Clean and parse numeric values
+      const hours = typeof row['HOURS'] === 'string' ? 
+        parseFloat(row['HOURS'].replace(/[^\d.-]/g, '')) : 
+        (typeof row['HOURS'] === 'number' ? row['HOURS'] : 0);
+      
+      const burdenedRate = typeof row['BURDENED RATE'] === 'string' ? 
+        parseFloat(row['BURDENED RATE'].replace(/[^\d.-]/g, '')) : 
+        (typeof row['BURDENED RATE'] === 'number' ? row['BURDENED RATE'] : 0);
+
+      const activityKey = `${activityCode} - ${activityDescription}`;
+
+      if (!invoices[invoiceNumber].employees[employee].activities[activityKey]) {
+        invoices[invoiceNumber].employees[employee].activities[activityKey] = {
+          activityCode,
+          activityDescription,
+          regularHours: 0,
+          overtimeHours: 0,
+          regularRate: 0,
+          overtimeRate: 0,
+          regularTotal: 0,
+          overtimeTotal: 0
+        };
+      }
+
+      const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
+
+      if (payType.toLowerCase() === 'regular') {
+        activity.regularHours += hours;
+        activity.regularRate = burdenedRate;
+        activity.regularTotal = activity.regularHours * activity.regularRate;
+        if (activity.overtimeRate === 0) {
+          activity.overtimeRate = burdenedRate * 1.5;
+        }
+      } else if (payType.toLowerCase() === 'overtime') {
+        activity.overtimeHours += hours;
+        activity.overtimeRate = burdenedRate;
+        activity.overtimeTotal = activity.overtimeHours * activity.overtimeRate;
+        if (activity.regularRate === 0) {
+          activity.regularRate = burdenedRate / 1.5;
+        }
+      }
+    }
+
+    return invoices;
+  };
+
+  // Process data from Excel file
+  const processExcelData = (data) => {
     const headers = data[0];
     const invoices = {};
 
@@ -147,35 +267,110 @@ const ExcelInvoiceGenerator = () => {
   });
 
   return (
-    <div className="max-w-6xl mx-auto p-8 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-      <div className="mb-8 bg-white shadow-lg rounded-lg p-6">
-        <h1 className="text-3xl font-bold text-center text-blue-800 mb-4">Excel Invoice Generator</h1>
-        <div {...getRootProps()} className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center cursor-pointer transition-colors hover:border-blue-500">
-          <input {...getInputProps()} />
-          {isDragActive ? (
-            <p className="text-blue-600">Drop the Excel file here...</p>
-          ) : (
-            <p className="text-gray-600">Drag and drop an Excel file here, or click to select a file</p>
-          )}
+    <div className="max-w-6xl mx-auto p-8">
+      <div className="mb-8 bg-white shadow-xl rounded-xl overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 text-white">
+          <h1 className="text-3xl font-bold text-center mb-2">Excel Invoice Generator</h1>
+          <p className="text-center text-blue-100">Upload your timesheet Excel file to generate professional invoices</p>
+        </div>
+        
+        <div className="p-8">
+          <div 
+            {...getRootProps()} 
+            className="border-2 border-dashed border-blue-300 rounded-xl p-10 text-center cursor-pointer transition-all duration-300 hover:border-blue-500 hover:bg-blue-50"
+          >
+            <input {...getInputProps()} />
+            <div className="flex flex-col items-center">
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                className={`h-16 w-16 mb-4 ${isDragActive ? 'text-blue-600' : 'text-blue-400'}`} 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={1.5} 
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" 
+                />
+              </svg>
+              {isDragActive ? (
+                <p className="text-blue-600 text-lg font-medium">Drop the Excel file here...</p>
+              ) : (
+                <>
+                  <p className="text-gray-700 text-lg font-medium mb-2">Drag and drop an Excel file here</p>
+                  <p className="text-gray-500">or click to select a file</p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {isLoading && (
-        <div className="flex justify-center items-center my-8">
-          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span className="ml-2 text-blue-500">Processing file...</span>
+        <div className="flex justify-center items-center my-8 bg-white p-8 rounded-xl shadow-lg">
+          <div className="flex flex-col items-center">
+            <svg className="animate-spin h-12 w-12 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-blue-600 text-lg font-medium">Processing file...</span>
+            <p className="text-gray-500 mt-2 text-center max-w-md">
+              This may take a moment depending on the size of your Excel file.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {dataSource === 'processed' && (
+        <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg p-6 shadow-md">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-lg font-medium text-green-800">Using Processed Data</h3>
+              <p className="mt-1 text-green-700">
+                Using processed timesheet data from Timesheet Processor.
+              </p>
+              <div className="mt-3">
+                <button 
+                  onClick={() => {
+                    setDataSource('upload');
+                    setInvoices(null);
+                  }}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                >
+                  Clear and Upload New File
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {invoices && !isLoading && (
-        <div className="mb-8 bg-white shadow-lg rounded-lg p-6">
-          <h2 className="text-2xl font-semibold text-blue-800 mb-4">Generated Invoices</h2>
-          <Button onClick={handlePrintAll} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors">
-            Download All Invoices as PDFs
-          </Button>
+        <div className="mb-8 bg-white shadow-xl rounded-xl overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 text-white">
+            <h2 className="text-2xl font-bold text-center">Generated Invoices</h2>
+            <p className="text-center text-blue-100 mt-1">Ready to download or print</p>
+          </div>
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Button 
+                onClick={handlePrintAll} 
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg shadow-md transition-all duration-200 flex items-center justify-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download All Invoices as PDFs
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

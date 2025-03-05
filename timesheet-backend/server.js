@@ -43,6 +43,89 @@ app.get('/api/employees', async (req, res) => {
   }
 });
 
+// Get employee pay history
+app.get('/api/employees/:id/pay-history', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 
+        eph.*,
+        e.first_name,
+        e.last_name,
+        e.ee_code
+      FROM employee_pay_history eph
+      JOIN employees e ON eph.employee_id = e.id
+      WHERE eph.employee_id = $1
+      ORDER BY eph.effective_date DESC`,
+      [id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching employee pay history' });
+  }
+});
+
+// Add manual pay history entry
+app.post('/api/employees/:id/pay-history', async (req, res) => {
+  const { id } = req.params;
+  const { regular_rate, overtime_rate, effective_date, notes } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO employee_pay_history 
+       (employee_id, regular_rate, overtime_rate, effective_date, notes) 
+       VALUES ($1, $2, $3, $4, $5) 
+       RETURNING *`,
+      [id, regular_rate, overtime_rate, effective_date, notes]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while adding employee pay history' });
+  }
+});
+
+// Check for pay rate changes
+app.get('/api/pay-rate-changes', async (req, res) => {
+  const { start_date, end_date } = req.query;
+  try {
+    const { rows } = await pool.query(
+      `WITH employee_rates AS (
+        SELECT 
+          e.id AS employee_id,
+          e.first_name,
+          e.last_name,
+          e.ee_code,
+          e.regular_rate AS current_regular_rate,
+          e.overtime_rate AS current_overtime_rate,
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', eph.id,
+                'regular_rate', eph.regular_rate,
+                'overtime_rate', eph.overtime_rate,
+                'effective_date', eph.effective_date,
+                'notes', eph.notes
+              )
+            )
+            FROM employee_pay_history eph
+            WHERE eph.employee_id = e.id
+            AND eph.effective_date BETWEEN $1 AND $2
+            ORDER BY eph.effective_date DESC
+          ) AS rate_changes
+        FROM employees e
+      )
+      SELECT * FROM employee_rates
+      WHERE rate_changes IS NOT NULL`,
+      [start_date, end_date]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while checking for pay rate changes' });
+  }
+});
+
 app.post('/api/employees', async (req, res) => {
   const { ee_code, last_name, first_name, regular_rate, overtime_rate } = req.body;
   try {
