@@ -715,66 +715,112 @@ const TimesheetProcessor = () => {
           </div>
           
           <div className="p-8">
-            {/* Pay Rate Change Notification */}
-            {weekEndingDate && (() => {
-              // Try to parse the weekEndingDate in various formats
-              let endDate;
-              
-              // Try to detect the date format and parse it
-              const tryParseDate = (dateStr) => {
-                // Check if it's already in ISO format (YYYY-MM-DD)
-                if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-                  return new Date(dateStr);
-                }
-                
-                // Try MM/DD/YYYY format
-                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
-                  const [month, day, year] = dateStr.split('/');
-                  return new Date(year, month - 1, day);
-                }
-                
-                // Try MM-DD-YYYY format
-                if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateStr)) {
-                  const [month, day, year] = dateStr.split('-');
-                  return new Date(year, month - 1, day);
-                }
-                
-                // Try to parse with Date constructor as last resort
-                const date = new Date(dateStr);
-                if (!isNaN(date.getTime())) {
-                  return date;
-                }
-                
-                return null;
-              };
-              
-              endDate = tryParseDate(weekEndingDate);
-              
-              // If we couldn't parse the date, don't show the notification
-              if (!endDate || isNaN(endDate.getTime())) {
-                console.warn(`Could not parse date: ${weekEndingDate}`);
-                return null;
+          {/* Week Ending Date Input */}
+          <div className="mb-6 bg-blue-50 rounded-lg p-4 border-l-4 border-blue-500">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="ml-3 w-full">
+                <h3 className="text-lg font-medium text-blue-800">Week Ending Date</h3>
+                <p className="text-sm text-blue-600 mb-2">
+                  Enter the week ending date (Sunday) for this timesheet
+                </p>
+                <div className="flex items-center">
+                  <input
+                    type="date"
+                    id="manualWeekEndingDate"
+                    value={manualWeekEndingDate}
+                    onChange={(e) => {
+                      // Ensure the selected date is a Sunday
+                      const selectedDate = new Date(e.target.value);
+                      if (selectedDate.getDay() !== 0) { // 0 is Sunday
+                        // Find the next Sunday
+                        const daysUntilSunday = 7 - selectedDate.getDay();
+                        selectedDate.setDate(selectedDate.getDate() + daysUntilSunday);
+                        // Format back to YYYY-MM-DD
+                        const year = selectedDate.getFullYear();
+                        const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                        const day = String(selectedDate.getDate()).padStart(2, '0');
+                        setManualWeekEndingDate(`${year}-${month}-${day}`);
+                        alert(`Week ending date must be a Sunday. Adjusted to the next Sunday: ${month}/${day}/${year}`);
+                      } else {
+                        setManualWeekEndingDate(e.target.value);
+                      }
+                      setWeekEndingDate(e.target.value);
+                    }}
+                    className="w-full md:w-1/3 border border-gray-300 rounded-md shadow-sm p-2"
+                  />
+                  <div className="ml-2 text-sm text-gray-500">
+                    {manualWeekEndingDate && new Date(manualWeekEndingDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Pay Rate Change Notification */}
+          {weekEndingDate && (() => {
+            // Try to parse the weekEndingDate in various formats
+            let endDate;
+            
+            // Try to detect the date format and parse it
+            const tryParseDate = (dateStr) => {
+              // Check if it's already in ISO format (YYYY-MM-DD)
+              if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                return new Date(dateStr);
               }
               
-              // Calculate start date as 7 days before week ending date
-              const startDate = new Date(endDate);
-              startDate.setDate(startDate.getDate() - 7);
+              // Try MM/DD/YYYY format
+              if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+                const [month, day, year] = dateStr.split('/');
+                return new Date(year, month - 1, day);
+              }
               
-              // Format dates as YYYY-MM-DD for API
-              const formatDateForApi = (date) => {
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-              };
+              // Try MM-DD-YYYY format
+              if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateStr)) {
+                const [month, day, year] = dateStr.split('-');
+                return new Date(year, month - 1, day);
+              }
               
-              return (
-                <PayRateChangeNotification 
-                  startDate={formatDateForApi(startDate)}
-                  endDate={formatDateForApi(endDate)}
-                />
-              );
-            })()}
+              // Try to parse with Date constructor as last resort
+              const date = new Date(dateStr);
+              if (!isNaN(date.getTime())) {
+                return date;
+              }
+              
+              return null;
+            };
+            
+            endDate = tryParseDate(weekEndingDate);
+            
+            // If we couldn't parse the date, don't show the notification
+            if (!endDate || isNaN(endDate.getTime())) {
+              console.warn(`Could not parse date: ${weekEndingDate}`);
+              return null;
+            }
+            
+            // Calculate start date as 7 days before week ending date
+            const startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - 7);
+            
+            // Format dates as YYYY-MM-DD for API
+            const formatDateForApi = (date) => {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
+            };
+            
+            return (
+              <PayRateChangeNotification 
+                startDate={formatDateForApi(startDate)}
+                endDate={formatDateForApi(endDate)}
+              />
+            );
+          })()}
             <div className="mb-6 flex flex-wrap gap-4">
               <Button 
                 onClick={exportToExcel} 

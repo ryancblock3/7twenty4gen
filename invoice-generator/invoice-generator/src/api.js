@@ -143,3 +143,17 @@ export const createInvoice = async (invoiceData) => {
   }
   return response.json();
 };
+
+export const createJob = async (jobData) => {
+  const response = await fetch(`${API_BASE_URL}/jobs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(jobData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create job');
+  }
+  return response.json();
+};

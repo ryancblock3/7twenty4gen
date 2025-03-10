@@ -8,6 +8,7 @@ import ManualTimesheetEntry from './components/ManualTimesheetEntry';
 import EmployeePayHistory from './components/EmployeePayHistory';
 import TimesheetHistory from './components/TimesheetHistory';
 import InvoiceHistory from './components/InvoiceHistory';
+import InvoiceEditor from './components/InvoiceEditor';
 import './print.css';
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
             <Route path="/employee-pay-history" element={<EmployeePayHistory />} />
             <Route path="/timesheet-history" element={<TimesheetHistory />} />
             <Route path="/invoice-history" element={<InvoiceHistory />} />
+            <Route path="/invoice-editor/:id" element={<InvoiceEditor />} />
           </Routes>
         </div>
       </div>

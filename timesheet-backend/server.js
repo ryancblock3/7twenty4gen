@@ -476,11 +476,63 @@ app.post('/api/timesheets', (req, res) => {
 // Invoice Routes
 app.get('/api/invoices', (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM invoices').all();
-    res.json(rows);
+    const { start_date, end_date } = req.query;
+    let query = 'SELECT i.*, j.job_name, j.job_number, j.client_name FROM invoices i JOIN jobs j ON i.job_id = j.id';
+    
+    if (start_date && end_date) {
+      query += ' WHERE i.invoice_date BETWEEN ? AND ?';
+      const rows = db.prepare(query).all(start_date, end_date);
+      res.json(rows);
+    } else {
+      const rows = db.prepare(query).all();
+      res.json(rows);
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'An error occurred while fetching invoices' });
+  }
+});
+
+// Get invoice details
+app.get('/api/invoices/:id/details', (req, res) => {
+  const { id } = req.params;
+  try {
+    // Get the invoice
+    const invoice = db.prepare(`
+      SELECT i.*, j.job_name, j.job_number, j.client_name 
+      FROM invoices i 
+      JOIN jobs j ON i.job_id = j.id 
+      WHERE i.id = ?
+    `).get(id);
+    
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    
+    // Get timesheet entries for this invoice
+    const timesheetEntries = db.prepare(`
+      SELECT 
+        t.*,
+        e.first_name as employee_first_name,
+        e.last_name as employee_last_name,
+        e.ee_code as employee_code,
+        a.activity_code,
+        a.activity_description
+      FROM timesheets t
+      JOIN employees e ON t.employee_id = e.id
+      JOIN jobs j ON t.job_id = j.id
+      LEFT JOIN activities a ON t.activity_id = a.id
+      WHERE j.id = ? AND t.date BETWEEN date(?, '-7 days') AND ?
+      ORDER BY t.date DESC
+    `).all(invoice.job_id, invoice.week_ending, invoice.week_ending);
+    
+    res.json({
+      invoice,
+      timesheetEntries
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching invoice details' });
   }
 });
 
@@ -504,6 +556,24 @@ app.post('/api/invoices', (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'An error occurred while creating the invoice' });
+  }
+});
+
+// Delete invoice
+app.delete('/api/invoices/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    const stmt = db.prepare('DELETE FROM invoices WHERE id = ?');
+    const info = stmt.run(id);
+    
+    if (info.changes > 0) {
+      res.status(204).send();
+    } else {
+      res.status(404).json({ error: 'Invoice not found' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while deleting the invoice' });
   }
 });
 

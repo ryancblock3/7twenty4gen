@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { fetchInvoices, fetchInvoiceDetails } from '../api';
+import { fetchInvoices, fetchInvoiceDetails, createInvoice } from '../api';
 import { Button } from './ui/button';
+import { useNavigate } from 'react-router-dom';
 
 const InvoiceHistory = () => {
   const [invoices, setInvoices] = useState([]);
@@ -13,6 +14,10 @@ const InvoiceHistory = () => {
     startDate: new Date(new Date().setDate(new Date().getDate() - 90)).toISOString().split('T')[0], // Default to last 90 days
     endDate: new Date().toISOString().split('T')[0] // Today
   });
+  const [groupedInvoices, setGroupedInvoices] = useState({});
+  const [selectedWeekEnding, setSelectedWeekEnding] = useState(null);
+  const [isCreatingRevision, setIsCreatingRevision] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch invoices when component mounts or date range changes
   useEffect(() => {
@@ -22,6 +27,68 @@ const InvoiceHistory = () => {
       try {
         const data = await fetchInvoices(dateRange.startDate, dateRange.endDate);
         setInvoices(data);
+        
+        // Group invoices by week ending date
+        const grouped = {};
+        data.forEach(invoice => {
+          const weekEnding = invoice.week_ending || 'No Date';
+          if (!grouped[weekEnding]) {
+            grouped[weekEnding] = [];
+          }
+          
+          // Check if this is a revision
+          const baseInvoiceNumber = invoice.invoice_number.split('-')[0];
+          const existingInvoices = grouped[weekEnding].filter(inv => 
+            inv.invoice_number.split('-')[0] === baseInvoiceNumber
+          );
+          
+          // Add revision number if needed
+          if (existingInvoices.length > 0) {
+            // This is a revision, check if it already has a revision number
+            if (!invoice.invoice_number.includes('-Rev')) {
+              invoice.displayNumber = `${invoice.invoice_number}-Rev${existingInvoices.length}`;
+            } else {
+              invoice.displayNumber = invoice.invoice_number;
+            }
+          } else {
+            invoice.displayNumber = invoice.invoice_number;
+          }
+          
+          grouped[weekEnding].push(invoice);
+        });
+        
+        // Sort each group by invoice number
+        Object.keys(grouped).forEach(weekEnding => {
+          grouped[weekEnding].sort((a, b) => {
+            // Extract base invoice numbers
+            const aBase = parseInt(a.invoice_number.split('-')[0], 10);
+            const bBase = parseInt(b.invoice_number.split('-')[0], 10);
+            
+            // Sort by base invoice number first
+            if (aBase !== bBase) return aBase - bBase;
+            
+            // If base numbers are the same, sort by revision
+            const aRev = a.invoice_number.includes('-Rev') ? 
+              parseInt(a.invoice_number.split('-Rev')[1], 10) : 0;
+            const bRev = b.invoice_number.includes('-Rev') ? 
+              parseInt(b.invoice_number.split('-Rev')[1], 10) : 0;
+            
+            return bRev - aRev; // Latest revision first
+          });
+        });
+        
+        setGroupedInvoices(grouped);
+        
+        // Set the first week ending date as selected if none is selected
+        if (!selectedWeekEnding && Object.keys(grouped).length > 0) {
+          // Sort week ending dates in descending order (newest first)
+          const sortedDates = Object.keys(grouped).sort((a, b) => {
+            if (a === 'No Date') return 1;
+            if (b === 'No Date') return -1;
+            return new Date(b) - new Date(a);
+          });
+          setSelectedWeekEnding(sortedDates[0]);
+        }
       } catch (err) {
         console.error('Error fetching invoice history:', err);
         setError('Failed to load invoice history. Please try again later.');
@@ -31,7 +98,7 @@ const InvoiceHistory = () => {
     };
     
     fetchInvoiceHistory();
-  }, [dateRange.startDate, dateRange.endDate]);
+  }, [dateRange.startDate, dateRange.endDate, selectedWeekEnding]);
 
   // Fetch invoice details when an invoice is selected
   useEffect(() => {
@@ -63,6 +130,69 @@ const InvoiceHistory = () => {
       ...prev,
       [name]: value
     }));
+  };
+
+  // Create a new revision of an invoice
+  const createRevision = async (invoice) => {
+    if (!invoiceDetails) return;
+    
+    setIsCreatingRevision(true);
+    try {
+      // Create a copy of the invoice with a new revision number
+      const baseInvoiceNumber = invoice.invoice_number.split('-')[0];
+      
+      // Find the highest revision number for this invoice
+      const revisions = invoices.filter(inv => 
+        inv.invoice_number.split('-')[0] === baseInvoiceNumber && 
+        inv.invoice_number.includes('-Rev')
+      );
+      
+      let nextRevision = 1;
+      if (revisions.length > 0) {
+        // Extract revision numbers and find the highest
+        const revisionNumbers = revisions.map(rev => {
+          const match = rev.invoice_number.match(/-Rev(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        });
+        nextRevision = Math.max(...revisionNumbers) + 1;
+      }
+      
+      // Create a new invoice with the next revision number
+      const newInvoiceNumber = `${baseInvoiceNumber}-Rev${nextRevision}`;
+      
+      // Prepare the invoice data
+      const invoiceData = {
+        job_id: invoiceDetails.invoice.job_id,
+        invoice_number: newInvoiceNumber,
+        week_ending: invoiceDetails.invoice.week_ending,
+        total_amount: invoiceDetails.invoice.total_amount,
+        invoice_date: new Date().toISOString().split('T')[0], // Today
+        due_date: invoiceDetails.invoice.due_date
+      };
+      
+      // Save to database
+      await createInvoice(invoiceData);
+      
+      // Refresh the invoice list
+      const data = await fetchInvoices(dateRange.startDate, dateRange.endDate);
+      setInvoices(data);
+      
+      // Select the new revision
+      setSelectedInvoice(null); // Clear selection first to trigger a refresh
+      
+      // Find the new invoice in the updated list
+      const newInvoice = data.find(inv => inv.invoice_number === newInvoiceNumber);
+      if (newInvoice) {
+        setSelectedInvoice(newInvoice.id);
+      }
+      
+      alert(`Created new revision: ${newInvoiceNumber}`);
+    } catch (error) {
+      console.error('Error creating revision:', error);
+      alert(`Failed to create revision: ${error.message}`);
+    } finally {
+      setIsCreatingRevision(false);
+    }
   };
 
   // Format date for display
@@ -166,42 +296,84 @@ const InvoiceHistory = () => {
           )}
           
           {/* Invoice List */}
-          {!isLoading && invoices.length === 0 && (
+          {!isLoading && Object.keys(groupedInvoices).length === 0 && (
             <div className="text-center py-8 text-gray-500">
               No invoice records found for the selected date range.
             </div>
           )}
           
-          {!isLoading && invoices.length > 0 && (
+          {!isLoading && Object.keys(groupedInvoices).length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Week Ending Tabs */}
+              <div className="md:col-span-3 bg-white rounded-lg border border-gray-200 shadow-md overflow-hidden mb-6">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-800">Week Ending Dates</h3>
+                </div>
+                <div className="p-4 overflow-x-auto">
+                  <div className="flex space-x-2">
+                    {Object.keys(groupedInvoices).sort((a, b) => {
+                      if (a === 'No Date') return 1;
+                      if (b === 'No Date') return -1;
+                      return new Date(b) - new Date(a);
+                    }).map((weekEnding) => (
+                      <button
+                        key={weekEnding}
+                        className={`px-4 py-2 rounded-md text-sm font-medium ${
+                          selectedWeekEnding === weekEnding
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                        onClick={() => setSelectedWeekEnding(weekEnding)}
+                      >
+                        {weekEnding === 'No Date' ? 'No Date' : formatDate(weekEnding)}
+                        <span className="ml-2 bg-gray-700 text-white text-xs rounded-full px-2 py-0.5">
+                          {groupedInvoices[weekEnding].length}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
               {/* Invoice List Panel */}
               <div className="md:col-span-1 bg-white rounded-lg border border-gray-200 shadow-md overflow-hidden">
                 <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-800">Invoices</h3>
+                  <h3 className="text-lg font-medium text-gray-800">
+                    Invoices {selectedWeekEnding && selectedWeekEnding !== 'No Date' ? `for ${formatDate(selectedWeekEnding)}` : ''}
+                  </h3>
                 </div>
                 <div className="overflow-y-auto max-h-[600px]">
                   <ul className="divide-y divide-gray-200">
-                    {invoices.map((invoice) => (
-                      <li 
-                        key={invoice.id}
-                        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${
-                          selectedInvoice === invoice.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                        }`}
-                        onClick={() => setSelectedInvoice(invoice.id)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium text-gray-900">Invoice #{invoice.invoice_number}</div>
-                            <div className="text-sm text-gray-500">{invoice.job_name}</div>
-                            <div className="text-xs text-gray-500">{invoice.job_number}</div>
+                    {selectedWeekEnding && groupedInvoices[selectedWeekEnding] && 
+                      groupedInvoices[selectedWeekEnding].map((invoice) => (
+                        <li 
+                          key={invoice.id}
+                          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                            selectedInvoice === invoice.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                          }`}
+                          onClick={() => setSelectedInvoice(invoice.id)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium text-gray-900">
+                                Invoice #{invoice.displayNumber}
+                                {invoice.invoice_number.includes('-Rev') && (
+                                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    Revision
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500">{invoice.job_name}</div>
+                              <div className="text-xs text-gray-500">{invoice.job_number}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-medium text-gray-900">{formatCurrency(invoice.total_amount)}</div>
+                              <div className="text-xs text-gray-500">{formatDate(invoice.invoice_date)}</div>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm font-medium text-gray-900">{formatCurrency(invoice.total_amount)}</div>
-                            <div className="text-xs text-gray-500">{formatDate(invoice.invoice_date)}</div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      ))
+                    }
                   </ul>
                 </div>
               </div>
@@ -357,6 +529,28 @@ const InvoiceHistory = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                           </svg>
                           Export
+                        </Button>
+                        <Button
+                          className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200"
+                          onClick={() => createRevision(invoiceDetails.invoice)}
+                          disabled={isCreatingRevision}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Create Revision
+                        </Button>
+                        <Button
+                          className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200"
+                          onClick={() => {
+                            // Navigate to invoice editor
+                            navigate(`/invoice-editor/${invoiceDetails.invoice.id}`);
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                          Edit
                         </Button>
                       </div>
                     </div>
