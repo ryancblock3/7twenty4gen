@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./invoice-generator/invoice-generator
+    container_name: invoice-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./timesheet-backend
+    container_name: timesheet-backend
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DB_PATH=/app/data/timesheet.db
+    volumes:
+      - sqlite_data:/app/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  sqlite_data:
+    # This volume stores the SQLite database file
+    # It persists across container restarts and rebuilds

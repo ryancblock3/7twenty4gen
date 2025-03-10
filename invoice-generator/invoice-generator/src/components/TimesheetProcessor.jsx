@@ -14,6 +14,7 @@ const TimesheetProcessor = () => {
   const [excelHeaders, setExcelHeaders] = useState([]);
   const [showMapping, setShowMapping] = useState(false);
   const [weekEndingDate, setWeekEndingDate] = useState('');
+  const [manualWeekEndingDate, setManualWeekEndingDate] = useState('');
   const [columnMapping, setColumnMapping] = useState({
     firstName: '',
     lastName: '',
@@ -24,8 +25,7 @@ const TimesheetProcessor = () => {
     payType: '',
     hours: '',
     burdened: '',
-    total: '',
-    weekEnding: ''
+    total: ''
   });
   const [columnExamples, setColumnExamples] = useState({});
   const navigate = useNavigate();
@@ -189,7 +189,9 @@ const TimesheetProcessor = () => {
             const hours = parseFloat(item[columnMapping.hours] || 0);
             const burdenedRate = cleanCurrency(item[columnMapping.burdened] || 0);
             const total = cleanCurrency(item[columnMapping.total] || 0);
-            const weekEnding = item[columnMapping.weekEnding] || '';
+            
+            // Use the manually entered week ending date
+            const weekEnding = manualWeekEndingDate || '';
             
             // Store the week ending date for pay rate change checks
             if (weekEnding && !weekEndingDate) {
@@ -235,7 +237,7 @@ const TimesheetProcessor = () => {
           }
         }
         
-        // Format currency columns and ensure no NaN values
+        // Format columns and ensure no NaN values
         processedData.forEach(row => {
           // Ensure numeric values are valid
           const total = typeof row['TOTAL'] === 'number' && !isNaN(row['TOTAL']) ? 
@@ -244,9 +246,9 @@ const TimesheetProcessor = () => {
           const rate = typeof row['BURDENED RATE'] === 'number' && !isNaN(row['BURDENED RATE']) ? 
             row['BURDENED RATE'] : 0;
           
-          // Format as currency
-          row['TOTAL'] = `$${total.toFixed(2)}`;
-          row['BURDENED RATE'] = `$${rate.toFixed(2)}`;
+          // Store numeric values without currency formatting for Excel calculations
+          row['TOTAL'] = total.toFixed(2);
+          row['BURDENED RATE'] = rate.toFixed(2);
           
           // Ensure hours are properly formatted
           row['HOURS'] = typeof row['HOURS'] === 'string' ? 
@@ -269,16 +271,72 @@ const TimesheetProcessor = () => {
     };
     
     reader.readAsArrayBuffer(excelFile);
-  }, [startInvoiceNumber, columnMapping, excelFile]);
+  }, [startInvoiceNumber, columnMapping, excelFile, manualWeekEndingDate]);
 
   const exportToExcel = () => {
     if (!processedData) return;
     
+    // Create a deep copy of the data to avoid modifying the original
+    const exportData = processedData.map(row => {
+      // Create a new object with the same properties but without the $ symbol
+      const newRow = {};
+      
+      // Copy all properties except BURDENED RATE and TOTAL
+      Object.keys(row).forEach(key => {
+        if (key !== 'BURDENED RATE' && key !== 'TOTAL' && key !== 'HOURS') {
+          newRow[key] = row[key];
+        }
+      });
+      
+      // Convert string numbers to actual numbers for Excel without $ symbol
+      newRow['BURDENED RATE'] = Number(row['BURDENED RATE']);
+      newRow['TOTAL'] = Number(row['TOTAL']);
+      newRow['HOURS'] = Number(row['HOURS']);
+      
+      return newRow;
+    });
+    
     // Create a new workbook
     const wb = XLSX.utils.book_new();
     
-    // Convert JSON to worksheet
-    const ws = XLSX.utils.json_to_sheet(processedData);
+    // Set cell formats for numeric columns
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Get the range of the sheet
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    
+    // Find the column indices for BURDENED RATE and TOTAL
+    const headers = Object.keys(exportData[0]);
+    const burdenedRateIndex = headers.indexOf('BURDENED RATE');
+    const totalIndex = headers.indexOf('TOTAL');
+    const hoursIndex = headers.indexOf('HOURS');
+    
+    // Set the cell format for numeric columns
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      // BURDENED RATE column
+      if (burdenedRateIndex !== -1) {
+        const burdenedRateCell = XLSX.utils.encode_cell({r: R, c: burdenedRateIndex});
+        if (!ws[burdenedRateCell]) continue;
+        ws[burdenedRateCell].t = 'n'; // Set cell type to number
+        ws[burdenedRateCell].z = '0.00'; // Format as number with 2 decimal places
+      }
+      
+      // TOTAL column
+      if (totalIndex !== -1) {
+        const totalCell = XLSX.utils.encode_cell({r: R, c: totalIndex});
+        if (!ws[totalCell]) continue;
+        ws[totalCell].t = 'n'; // Set cell type to number
+        ws[totalCell].z = '0.00'; // Format as number with 2 decimal places
+      }
+      
+      // HOURS column
+      if (hoursIndex !== -1) {
+        const hoursCell = XLSX.utils.encode_cell({r: R, c: hoursIndex});
+        if (!ws[hoursCell]) continue;
+        ws[hoursCell].t = 'n'; // Set cell type to number
+        ws[hoursCell].z = '0.00'; // Format as number with 2 decimal places
+      }
+    }
     
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Timesheet Summary');
@@ -302,23 +360,58 @@ const TimesheetProcessor = () => {
   });
 
   // Render a select field for column mapping
-  const renderSelectField = (label, field) => (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <select 
-        value={columnMapping[field]} 
-        onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})}
-        className="w-full border border-gray-300 rounded-md shadow-sm p-2"
-      >
-        <option value="">Select column</option>
-        {excelHeaders.map(header => (
-          <option key={header} value={header}>
-            {header} {columnExamples[header] ? `(e.g., "${columnExamples[header]}")` : ''}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+  const renderSelectField = (label, field, isRequired = false) => {
+    const isSelected = !!columnMapping[field];
+    
+    return (
+      <div className={`space-y-2 bg-white rounded-lg p-4 border ${isSelected ? 'border-green-300 shadow-md' : 'border-gray-200'} transition-all duration-300`}>
+        <div className="flex justify-between items-center">
+          <label className="block text-sm font-medium text-gray-700 flex items-center">
+            {label}
+            {isRequired && <span className="text-red-500 ml-1">*</span>}
+            {isSelected && (
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <svg className="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Mapped
+              </span>
+            )}
+          </label>
+          {columnExamples[columnMapping[field]] && (
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-md">
+              Example: "{columnExamples[columnMapping[field]]}"
+            </span>
+          )}
+        </div>
+        <div className="relative">
+          <select 
+            value={columnMapping[field]} 
+            onChange={(e) => setColumnMapping({...columnMapping, [field]: e.target.value})}
+            className={`w-full border ${isSelected ? 'border-green-300 bg-green-50' : 'border-gray-300'} rounded-md shadow-sm p-2 pr-10 appearance-none focus:ring-blue-500 focus:border-blue-500`}
+          >
+            <option value="">Select column</option>
+            {excelHeaders.map(header => (
+              <option key={header} value={header}>
+                {header} {columnExamples[header] ? `(e.g., "${columnExamples[header]}")` : ''}
+              </option>
+            ))}
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+              <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+            </svg>
+          </div>
+        </div>
+        {field === 'firstName' && !isSelected && (
+          <p className="text-xs text-gray-500 mt-1">Select the column containing employee first names</p>
+        )}
+        {field === 'lastName' && !isSelected && (
+          <p className="text-xs text-gray-500 mt-1">Select the column containing employee last names</p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto p-8">
@@ -440,29 +533,155 @@ const TimesheetProcessor = () => {
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
                     For each field below, select the corresponding column from your Excel file. 
-                    Examples from your data are shown to help you identify the correct columns.
+                    Fields marked with <span className="text-red-500">*</span> are required.
                   </p>
                 </div>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {renderSelectField('First Name', 'firstName')}
-              {renderSelectField('Last Name', 'lastName')}
-              {renderSelectField('Job Name', 'jobName')}
-              {renderSelectField('Job Number', 'jobNumber')}
-              {renderSelectField('Activity Code', 'activityCode')}
-              {renderSelectField('Activity Description', 'activityDescription')}
-              {renderSelectField('Pay Type', 'payType')}
-              {renderSelectField('Hours', 'hours')}
-              {renderSelectField('Burdened Rate', 'burdened')}
-              {renderSelectField('Total', 'total')}
-              {renderSelectField('Week Ending', 'weekEnding')}
+            {/* Progress indicator */}
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium text-gray-700">Mapping Progress</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {Object.values(columnMapping).filter(Boolean).length} of 10 fields mapped
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" 
+                  style={{ width: `${(Object.values(columnMapping).filter(Boolean).length / 10) * 100}%` }}
+                ></div>
+              </div>
             </div>
-          
-            <div className="flex space-x-4">
+            
+            {/* Quick actions */}
+            <div className="mb-6 flex flex-wrap gap-2">
               <Button 
                 onClick={() => {
+                  // Auto-map columns based on common names
+                  const commonMappings = {
+                    firstName: ['first name', 'firstname', 'first', 'fname'],
+                    lastName: ['last name', 'lastname', 'last', 'lname'],
+                    jobName: ['job name', 'jobname', 'job', 'project name', 'project'],
+                    jobNumber: ['job number', 'jobnumber', 'job #', 'project number', 'project #'],
+                    activityCode: ['activity code', 'activitycode', 'code'],
+                    activityDescription: ['activity description', 'activitydescription', 'description', 'activity desc'],
+                    payType: ['pay type', 'paytype', 'type', 'payment type'],
+                    hours: ['hours', 'hour', 'hrs', 'hr'],
+                    burdened: ['burdened rate', 'burdenedrate', 'burdened', 'rate'],
+                    total: ['total', 'amount', 'sum']
+                  };
+                  
+                  const newMapping = { ...columnMapping };
+                  let mappedCount = 0;
+                  
+                  // Try to auto-map columns
+                  Object.entries(commonMappings).forEach(([field, possibleNames]) => {
+                    if (!newMapping[field]) { // Only map if not already mapped
+                      const matchedHeader = excelHeaders.find(header => 
+                        possibleNames.includes(header.toLowerCase()) ||
+                        possibleNames.some(name => header.toLowerCase().includes(name))
+                      );
+                      
+                      if (matchedHeader) {
+                        newMapping[field] = matchedHeader;
+                        mappedCount++;
+                      }
+                    }
+                  });
+                  
+                  setColumnMapping(newMapping);
+                  
+                  // Show toast notification
+                }} 
+                className="bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200 flex items-center justify-center text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Auto-Map Columns
+              </Button>
+              
+              <Button 
+                onClick={() => {
+                  setColumnMapping({
+                    firstName: '',
+                    lastName: '',
+                    jobName: '',
+                    jobNumber: '',
+                    activityCode: '',
+                    activityDescription: '',
+                    payType: '',
+                    hours: '',
+                    burdened: '',
+                    total: '',
+                    weekEnding: ''
+                  });
+                }} 
+                className="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200 flex items-center justify-center text-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset Mapping
+              </Button>
+            </div>
+            
+            {/* Column preview */}
+            {Object.values(columnMapping).some(Boolean) && (
+              <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Column Preview</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {Object.entries(columnMapping).filter(([_, value]) => value).map(([field, header]) => (
+                    <div key={field} className="bg-white p-2 rounded border border-gray-200 text-xs">
+                      <span className="font-medium text-gray-700">{field}:</span>
+                      <span className="ml-1 text-gray-600">{header}</span>
+                      {columnExamples[header] && (
+                        <div className="mt-1 text-gray-500 truncate" title={columnExamples[header]}>
+                          Example: {columnExamples[header]}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Required fields section */}
+            <div className="mb-6">
+              <h3 className="text-lg font-medium text-gray-800 mb-3">Required Fields</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {renderSelectField('First Name', 'firstName', true)}
+                {renderSelectField('Last Name', 'lastName', true)}
+                {renderSelectField('Job Name', 'jobName', true)}
+                {renderSelectField('Job Number', 'jobNumber', true)}
+                {renderSelectField('Pay Type', 'payType', true)}
+                {renderSelectField('Hours', 'hours', true)}
+                {renderSelectField('Burdened Rate', 'burdened', true)}
+              </div>
+              
+              <h3 className="text-lg font-medium text-gray-800 mb-3">Optional Fields</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {renderSelectField('Activity Code', 'activityCode')}
+                {renderSelectField('Activity Description', 'activityDescription')}
+                {renderSelectField('Total', 'total')}
+                {renderSelectField('Week Ending', 'weekEnding')}
+              </div>
+            </div>
+          
+            <div className="flex flex-wrap gap-4">
+              <Button 
+                onClick={() => {
+                  // Check if all required fields are mapped
+                  const requiredFields = ['firstName', 'lastName', 'jobName', 'jobNumber', 'payType', 'hours', 'burdened'];
+                  const missingFields = requiredFields.filter(field => !columnMapping[field]);
+                  
+                  if (missingFields.length > 0) {
+                    alert(`Please map the following required fields: ${missingFields.join(', ')}`);
+                    return;
+                  }
+                  
                   saveMapping();
                   processExcelFile();
                 }} 

@@ -35,9 +35,11 @@ const JobInvoice = ({ jobData, invoiceNumber, businessInfo }) => {
 
     Object.values(jobData.employees).forEach(employee => {
       Object.entries(employee.activities).forEach(([activity, activityData]) => {
-        totalRegularHours += activityData.regularHours || 0;
-        totalOvertimeHours += activityData.overtimeHours || 0;
-        totalAmount += activityData.regularTotal + activityData.overtimeTotal;
+        // Round hours to 2 decimal places for consistency
+        totalRegularHours = parseFloat((totalRegularHours + (activityData.regularHours || 0)).toFixed(2));
+        totalOvertimeHours = parseFloat((totalOvertimeHours + (activityData.overtimeHours || 0)).toFixed(2));
+        // Round to 2 decimal places to match Excel precision
+        totalAmount = parseFloat((totalAmount + (activityData.regularTotal + activityData.overtimeTotal)).toFixed(2));
 
         if (!activityTotals[activity]) {
           activityTotals[activity] = {
@@ -46,9 +48,11 @@ const JobInvoice = ({ jobData, invoiceNumber, businessInfo }) => {
             total: 0
           };
         }
-        activityTotals[activity].regularHours += activityData.regularHours || 0;
-        activityTotals[activity].overtimeHours += activityData.overtimeHours || 0;
-        activityTotals[activity].total += activityData.regularTotal + activityData.overtimeTotal;
+        // Round activity hours to 2 decimal places for consistency
+        activityTotals[activity].regularHours = parseFloat((activityTotals[activity].regularHours + (activityData.regularHours || 0)).toFixed(2));
+        activityTotals[activity].overtimeHours = parseFloat((activityTotals[activity].overtimeHours + (activityData.overtimeHours || 0)).toFixed(2));
+        // Round to 2 decimal places to match Excel precision
+        activityTotals[activity].total = parseFloat((activityTotals[activity].total + (activityData.regularTotal + activityData.overtimeTotal)).toFixed(2));
       });
     });
 
@@ -118,7 +122,7 @@ const JobInvoice = ({ jobData, invoiceNumber, businessInfo }) => {
                     <TableCell className="text-right">{formatNumber(activityData.overtimeHours)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(activityData.regularRate)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(activityData.overtimeRate)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(activityData.regularTotal + activityData.overtimeTotal)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(parseFloat((activityData.regularTotal + activityData.overtimeTotal).toFixed(2)))}</TableCell>
                   </TableRow>
                 ))}
               </React.Fragment>

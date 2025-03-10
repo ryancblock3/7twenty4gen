@@ -430,19 +430,60 @@ app.post('/api/activities', (req, res) => {
 // Timesheet Routes
 app.get('/api/timesheets', (req, res) => {
   try {
-    const rows = db.prepare(`
+    const { job_id, week_start, start_date, end_date } = req.query;
+    
+    let query = `
       SELECT 
         t.*,
         e.first_name as employee_first_name,
         e.last_name as employee_last_name,
+        e.ee_code as employee_code,
         j.job_name,
-        a.activity_description
+        j.job_number,
+        a.activity_description,
+        a.activity_code
       FROM timesheets t
       JOIN employees e ON t.employee_id = e.id
       JOIN jobs j ON t.job_id = j.id
       LEFT JOIN activities a ON t.activity_id = a.id
-      ORDER BY t.date DESC
-    `).all();
+    `;
+    
+    const queryParams = [];
+    const conditions = [];
+    
+    // Add filters based on query parameters
+    if (job_id) {
+      conditions.push('t.job_id = ?');
+      queryParams.push(job_id);
+    }
+    
+    if (week_start) {
+      // Calculate week ending date (7 days after week start)
+      const weekStartDate = new Date(week_start);
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setDate(weekStartDate.getDate() + 6);
+      
+      const formattedWeekStart = week_start;
+      const formattedWeekEnd = weekEndDate.toISOString().split('T')[0];
+      
+      conditions.push('t.date BETWEEN ? AND ?');
+      queryParams.push(formattedWeekStart, formattedWeekEnd);
+    } else if (start_date && end_date) {
+      conditions.push('t.date BETWEEN ? AND ?');
+      queryParams.push(start_date, end_date);
+    }
+    
+    // Add WHERE clause if there are conditions
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    // Add ORDER BY clause
+    query += ' ORDER BY t.date DESC';
+    
+    const stmt = db.prepare(query);
+    const rows = queryParams.length > 0 ? stmt.all(...queryParams) : stmt.all();
+    
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -476,11 +517,98 @@ app.post('/api/timesheets', (req, res) => {
 // Invoice Routes
 app.get('/api/invoices', (req, res) => {
   try {
-    const rows = db.prepare('SELECT * FROM invoices').all();
+    const { job_id, week_ending, start_date, end_date } = req.query;
+    
+    let query = `
+      SELECT 
+        i.*,
+        j.job_name,
+        j.job_number,
+        j.client_name
+      FROM invoices i
+      JOIN jobs j ON i.job_id = j.id
+    `;
+    
+    const queryParams = [];
+    const conditions = [];
+    
+    // Add filters based on query parameters
+    if (job_id) {
+      conditions.push('i.job_id = ?');
+      queryParams.push(job_id);
+    }
+    
+    if (week_ending) {
+      conditions.push('i.week_ending = ?');
+      queryParams.push(week_ending);
+    } else if (start_date && end_date) {
+      conditions.push('i.invoice_date BETWEEN ? AND ?');
+      queryParams.push(start_date, end_date);
+    }
+    
+    // Add WHERE clause if there are conditions
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    // Add ORDER BY clause
+    query += ' ORDER BY i.invoice_date DESC';
+    
+    const stmt = db.prepare(query);
+    const rows = queryParams.length > 0 ? stmt.all(...queryParams) : stmt.all();
+    
     res.json(rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'An error occurred while fetching invoices' });
+  }
+});
+
+// Get invoice details with timesheet entries
+app.get('/api/invoices/:id/details', (req, res) => {
+  const { id } = req.params;
+  try {
+    // Get the invoice
+    const invoice = db.prepare(`
+      SELECT 
+        i.*,
+        j.job_name,
+        j.job_number,
+        j.client_name
+      FROM invoices i
+      JOIN jobs j ON i.job_id = j.id
+      WHERE i.id = ?
+    `).get(id);
+    
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    
+    // Get the timesheet entries for this invoice
+    const timesheetEntries = db.prepare(`
+      SELECT 
+        t.*,
+        e.first_name as employee_first_name,
+        e.last_name as employee_last_name,
+        e.ee_code as employee_code,
+        j.job_name,
+        j.job_number,
+        a.activity_description,
+        a.activity_code
+      FROM timesheets t
+      JOIN employees e ON t.employee_id = e.id
+      JOIN jobs j ON t.job_id = j.id
+      LEFT JOIN activities a ON t.activity_id = a.id
+      WHERE t.job_id = ? AND t.date BETWEEN date(?, '-6 days') AND ?
+    `).all(invoice.job_id, invoice.week_ending, invoice.week_ending);
+    
+    res.json({
+      invoice,
+      timesheetEntries
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while fetching invoice details' });
   }
 });
 

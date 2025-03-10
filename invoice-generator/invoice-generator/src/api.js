@@ -55,12 +55,20 @@ export const fetchActivities = async () => {
 };
 
 export const fetchTimesheets = async (jobId, weekStartDate) => {
-    const response = await fetch(`${API_BASE_URL}/timesheets?job_id=${jobId}&week_start=${weekStartDate}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch timesheets');
-    }
-    return response.json();
-  };
+  const response = await fetch(`${API_BASE_URL}/timesheets?job_id=${jobId}&week_start=${weekStartDate}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch timesheets');
+  }
+  return response.json();
+};
+
+export const fetchTimesheetHistory = async (startDate, endDate) => {
+  const response = await fetch(`${API_BASE_URL}/timesheets?start_date=${startDate}&end_date=${endDate}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch timesheet history');
+  }
+  return response.json();
+};
 
 export const createTimesheetEntry = async (entry) => {
   const response = await fetch(`${API_BASE_URL}/timesheets`, {
@@ -91,13 +99,47 @@ export const createActivity = async (activityData) => {
   };
 
   export const fetchAllTimesheets = async (weekStartDate) => {
-    const endDate = new Date(weekStartDate);
-    endDate.setDate(endDate.getDate() + 6);
-    const formattedEndDate = endDate.toISOString().split('T')[0];
-  
-    const response = await fetch(`${API_BASE_URL}/timesheets?start_date=${weekStartDate}&end_date=${formattedEndDate}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch timesheets');
-    }
-    return response.json();
-  };
+  const endDate = new Date(weekStartDate);
+  endDate.setDate(endDate.getDate() + 6);
+  const formattedEndDate = endDate.toISOString().split('T')[0];
+
+  const response = await fetch(`${API_BASE_URL}/timesheets?start_date=${weekStartDate}&end_date=${formattedEndDate}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch timesheets');
+  }
+  return response.json();
+};
+
+export const fetchInvoices = async (startDate, endDate) => {
+  let url = `${API_BASE_URL}/invoices`;
+  if (startDate && endDate) {
+    url += `?start_date=${startDate}&end_date=${endDate}`;
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch invoices');
+  }
+  return response.json();
+};
+
+export const fetchInvoiceDetails = async (invoiceId) => {
+  const response = await fetch(`${API_BASE_URL}/invoices/${invoiceId}/details`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch invoice details');
+  }
+  return response.json();
+};
+
+export const createInvoice = async (invoiceData) => {
+  const response = await fetch(`${API_BASE_URL}/invoices`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(invoiceData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create invoice');
+  }
+  return response.json();
+};

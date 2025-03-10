@@ -10,8 +10,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database connection - creates the database file in the current directory
-const dbPath = path.join(__dirname, 'timesheet.db');
+// Database connection
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'timesheet.db');
 const db = new Database(dbPath, { verbose: console.log });
 
 // Initialize database with pragmas for better performance and safety
@@ -22,10 +22,11 @@ console.log(`Connected to SQLite database at: ${dbPath}`);
 
 // Helper function to run migrations
 function runMigrations() {
+  // This would be expanded to run all migrations in sequence
   console.log('Running migrations...');
   
-  // Create tables - each statement must be executed separately
-  db.prepare(`
+  // Example of running a migration
+  const migration1 = db.prepare(`
     CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ee_code TEXT NOT NULL UNIQUE,
@@ -35,10 +36,8 @@ function runMigrations() {
       overtime_rate REAL NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-  
-  db.prepare(`
+    );
+    
     CREATE TABLE IF NOT EXISTS jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_number TEXT NOT NULL UNIQUE,
@@ -47,10 +46,8 @@ function runMigrations() {
       client_name TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `).run();
-  
-  db.prepare(`
+    );
+    
     CREATE TABLE IF NOT EXISTS activities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       activity_code TEXT NOT NULL,
@@ -59,10 +56,8 @@ function runMigrations() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (job_id) REFERENCES jobs(id)
-    )
-  `).run();
-  
-  db.prepare(`
+    );
+    
     CREATE TABLE IF NOT EXISTS timesheets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
@@ -76,10 +71,8 @@ function runMigrations() {
       FOREIGN KEY (employee_id) REFERENCES employees(id),
       FOREIGN KEY (job_id) REFERENCES jobs(id),
       FOREIGN KEY (activity_id) REFERENCES activities(id)
-    )
-  `).run();
-  
-  db.prepare(`
+    );
+    
     CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_id INTEGER NOT NULL,
@@ -91,10 +84,11 @@ function runMigrations() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (job_id) REFERENCES jobs(id)
-    )
+    );
   `).run();
   
-  db.prepare(`
+  // Migration for employee_pay_history
+  const migration2 = db.prepare(`
     CREATE TABLE IF NOT EXISTS employee_pay_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
@@ -105,78 +99,34 @@ function runMigrations() {
       notes TEXT,
       UNIQUE(employee_id, effective_date),
       FOREIGN KEY (employee_id) REFERENCES employees(id)
-    )
-  `).run();
-  
-  db.prepare(`
+    );
+    
     CREATE INDEX IF NOT EXISTS idx_employee_pay_history_employee_id 
-    ON employee_pay_history(employee_id)
-  `).run();
-  
-  db.prepare(`
+    ON employee_pay_history(employee_id);
+    
     CREATE INDEX IF NOT EXISTS idx_employee_pay_history_effective_date 
-    ON employee_pay_history(effective_date)
+    ON employee_pay_history(effective_date);
   `).run();
   
   // Create triggers for employee pay history
-  db.prepare(`
+  const createTrigger = db.prepare(`
     CREATE TRIGGER IF NOT EXISTS employee_pay_change_trigger
     AFTER INSERT ON employees
     BEGIN
       INSERT INTO employee_pay_history (employee_id, regular_rate, overtime_rate, effective_date)
       VALUES (new.id, new.regular_rate, new.overtime_rate, date('now'));
-    END
+    END;
   `).run();
   
-  db.prepare(`
+  const updateTrigger = db.prepare(`
     CREATE TRIGGER IF NOT EXISTS employee_pay_update_trigger
     AFTER UPDATE OF regular_rate, overtime_rate ON employees
     WHEN old.regular_rate <> new.regular_rate OR old.overtime_rate <> new.overtime_rate
     BEGIN
       INSERT INTO employee_pay_history (employee_id, regular_rate, overtime_rate, effective_date)
       VALUES (new.id, new.regular_rate, new.overtime_rate, date('now'));
-    END
+    END;
   `).run();
-  
-  // Insert sample data
-  try {
-    // Insert employees one by one to avoid multiple statements
-    db.prepare(`
-      INSERT INTO employees (ee_code, first_name, last_name, regular_rate, overtime_rate)
-      VALUES ('EMP001', 'John', 'Doe', 25.00, 37.50)
-    `).run();
-    
-    db.prepare(`
-      INSERT INTO employees (ee_code, first_name, last_name, regular_rate, overtime_rate)
-      VALUES ('EMP002', 'Jane', 'Smith', 30.00, 45.00)
-    `).run();
-    
-    db.prepare(`
-      INSERT INTO employees (ee_code, first_name, last_name, regular_rate, overtime_rate)
-      VALUES ('EMP003', 'Michael', 'Johnson', 28.50, 42.75)
-    `).run();
-    
-    // Insert jobs one by one
-    db.prepare(`
-      INSERT INTO jobs (job_number, job_name, job_description, client_name)
-      VALUES ('JOB001', 'Office Renovation', 'Complete renovation of office space', 'ABC Corp')
-    `).run();
-    
-    db.prepare(`
-      INSERT INTO jobs (job_number, job_name, job_description, client_name)
-      VALUES ('JOB002', 'Warehouse Construction', 'New warehouse construction project', 'XYZ Logistics')
-    `).run();
-    
-    db.prepare(`
-      INSERT INTO jobs (job_number, job_name, job_description, client_name)
-      VALUES ('JOB003', 'Retail Store Remodel', 'Remodeling of retail store', 'Retail Chain Inc')
-    `).run();
-  } catch (err) {
-    // Ignore duplicate key errors for sample data
-    if (!err.message.includes('UNIQUE constraint failed')) {
-      throw err;
-    }
-  }
   
   console.log('Migrations completed successfully');
 }

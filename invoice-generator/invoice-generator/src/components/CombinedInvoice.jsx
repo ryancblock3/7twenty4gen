@@ -4,9 +4,19 @@ import { Button } from './ui/button';
 
 const CombinedInvoice = ({ invoices }) => {
   const componentRef = useRef(null);
-  const totalAmount = invoices.reduce((sum, invoice) => sum + invoice.total, 0);
-  const totalRegularHours = invoices.reduce((sum, invoice) => sum + invoice.regularHours, 0);
-  const totalOvertimeHours = invoices.reduce((sum, invoice) => sum + invoice.overtimeHours, 0);
+  // Calculate the total using a precise approach
+  const totalAmount = parseFloat(invoices.reduce((sum, invoice) => {
+    // Add each invoice total with rounding to 2 decimal places
+    return parseFloat((sum + invoice.total).toFixed(2));
+  }, 0).toFixed(2));
+  // Use the same precise approach for hours
+  const totalRegularHours = parseFloat(invoices.reduce((sum, invoice) => {
+    return parseFloat((sum + invoice.regularHours).toFixed(2));
+  }, 0).toFixed(2));
+  
+  const totalOvertimeHours = parseFloat(invoices.reduce((sum, invoice) => {
+    return parseFloat((sum + invoice.overtimeHours).toFixed(2));
+  }, 0).toFixed(2));
 
   const handlePrint = () => {
     const printContent = componentRef.current;

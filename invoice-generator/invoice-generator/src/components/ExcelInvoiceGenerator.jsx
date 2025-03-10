@@ -142,14 +142,16 @@ const ExcelInvoiceGenerator = () => {
       if (payType.toLowerCase() === 'regular') {
         activity.regularHours += hours;
         activity.regularRate = burdenedRate;
-        activity.regularTotal = activity.regularHours * activity.regularRate;
+        // Round to 2 decimal places to match Excel precision
+        activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
         if (activity.overtimeRate === 0) {
           activity.overtimeRate = burdenedRate * 1.5;
         }
       } else if (payType.toLowerCase() === 'overtime') {
         activity.overtimeHours += hours;
         activity.overtimeRate = burdenedRate;
-        activity.overtimeTotal = activity.overtimeHours * activity.overtimeRate;
+        // Round to 2 decimal places to match Excel precision
+        activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
         if (activity.regularRate === 0) {
           activity.regularRate = burdenedRate / 1.5;
         }
@@ -215,14 +217,16 @@ const ExcelInvoiceGenerator = () => {
       if (payType.toLowerCase() === 'regular') {
         activity.regularHours += hours;
         activity.regularRate = burdenedRate;
-        activity.regularTotal = activity.regularHours * activity.regularRate;
+        // Round to 2 decimal places to match Excel precision
+        activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
         if (activity.overtimeRate === 0) {
           activity.overtimeRate = burdenedRate * 1.5;
         }
       } else if (payType.toLowerCase() === 'overtime') {
         activity.overtimeHours += hours;
         activity.overtimeRate = burdenedRate;
-        activity.overtimeTotal = activity.overtimeHours * activity.overtimeRate;
+        // Round to 2 decimal places to match Excel precision
+        activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
         if (activity.regularRate === 0) {
           activity.regularRate = burdenedRate / 1.5;
         }
@@ -385,9 +389,11 @@ const ExcelInvoiceGenerator = () => {
 
                 Object.values(data.employees).forEach(employee => {
                   Object.values(employee.activities).forEach(activity => {
-                    regularHours += activity.regularHours || 0;
-                    overtimeHours += activity.overtimeHours || 0;
-                    total += activity.regularTotal + activity.overtimeTotal;
+                    // Round hours to 2 decimal places for consistency
+                    regularHours = parseFloat((regularHours + (activity.regularHours || 0)).toFixed(2));
+                    overtimeHours = parseFloat((overtimeHours + (activity.overtimeHours || 0)).toFixed(2));
+                    // Round the sum to 2 decimal places to match Excel precision
+                    total = parseFloat((total + (activity.regularTotal + activity.overtimeTotal)).toFixed(2));
                   });
                 });
 

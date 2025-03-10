@@ -4,7 +4,10 @@ import Navbar from './components/Navbar';
 import ExcelInvoiceGenerator from './components/ExcelInvoiceGenerator';
 import Timesheet from './components/Timesheet';
 import TimesheetProcessor from './components/TimesheetProcessor';
+import ManualTimesheetEntry from './components/ManualTimesheetEntry';
 import EmployeePayHistory from './components/EmployeePayHistory';
+import TimesheetHistory from './components/TimesheetHistory';
+import InvoiceHistory from './components/InvoiceHistory';
 import './print.css';
 
 function App() {
@@ -25,7 +28,10 @@ function App() {
             <Route path="/invoice-generator" element={<ExcelInvoiceGenerator />} />
             <Route path="/timesheet" element={<Timesheet />} />
             <Route path="/timesheet-processor" element={<TimesheetProcessor />} />
+            <Route path="/manual-timesheet" element={<ManualTimesheetEntry />} />
             <Route path="/employee-pay-history" element={<EmployeePayHistory />} />
+            <Route path="/timesheet-history" element={<TimesheetHistory />} />
+            <Route path="/invoice-history" element={<InvoiceHistory />} />
           </Routes>
         </div>
       </div>
@@ -91,6 +97,17 @@ const Home = () => (
           />
           
           <FeatureCard 
+            title="Manual Timesheet" 
+            description="Manually enter timesheet data for invoice generation"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            }
+            link="/manual-timesheet"
+          />
+          
+          <FeatureCard 
             title="Employee Pay History" 
             description="Track employee pay rates and view pay rate change history"
             icon={
@@ -99,6 +116,28 @@ const Home = () => (
               </svg>
             }
             link="/employee-pay-history"
+          />
+          
+          <FeatureCard 
+            title="Timesheet History" 
+            description="View and analyze historical timesheet data"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            }
+            link="/timesheet-history"
+          />
+          
+          <FeatureCard 
+            title="Invoice History" 
+            description="View and manage historical invoices"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+              </svg>
+            }
+            link="/invoice-history"
           />
           
           <div className="group bg-white border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center transition-all duration-300 hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 transform hover:-translate-y-1">
