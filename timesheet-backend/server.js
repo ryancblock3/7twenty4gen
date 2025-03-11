@@ -268,8 +268,7 @@ app.post('/api/employees/:id/pay-history', (req, res) => {
 app.get('/api/pay-rate-changes', (req, res) => {
   const { start_date, end_date } = req.query;
   try {
-    // SQLite doesn't support JSON functions like PostgreSQL
-    // We'll need to fetch the data and transform it in JavaScript
+    // Fetch data and transform it in JavaScript
     const employees = db.prepare(`
       SELECT 
         e.id AS employee_id,

@@ -5,17 +5,12 @@ This repository contains a full-stack invoice generator application with a React
 ## Project Structure
 
 - `invoice-generator/`: Frontend React application
-- `timesheet-backend/`: Backend Express.js application
-  - `migrations/`: Database migration scripts
-- `docker-compose.yml`: Docker Compose configuration for local development and production
+- `timesheet-backend/`: Backend Express.js application with SQLite database
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- Node.js (for local development)
+- Node.js
 - Git
-- Unraid server (for deployment)
-- GitHub account (for CI/CD)
 
 ## Features
 
@@ -40,82 +35,39 @@ This repository contains a full-stack invoice generator application with a React
    cp .env.example .env
    ```
 
-3. Run the setup script to initialize the database:
+3. Install dependencies and start the backend:
    ```bash
-   ./setup-database.sh
+   cd timesheet-backend
+   npm install
+   npm start
    ```
-   This script will:
-   - Start the application using Docker Compose
-   - Run all database migrations
-   - Create the necessary tables
-   - Add sample data for testing
 
-4. Alternatively, you can manually start the application and run migrations:
+4. In a separate terminal, install dependencies and start the frontend:
    ```bash
-   # Start the application
-   docker-compose up -d
-   
-   # Run migrations
-   docker-compose exec timesheet-backend npm run migrate
+   cd invoice-generator/invoice-generator
+   npm install
+   npm start
    ```
 
 5. Access the application:
-   - Frontend: http://localhost
+   - Frontend: http://localhost:3000
    - Backend API: http://localhost:3000/api
 
-## Docker Setup
+## Database
 
-The application is containerized using Docker:
+The application uses SQLite for data storage:
 
-- Frontend: Nginx serving the React build
-- Backend: Node.js Express application
-- Database: PostgreSQL
-
-## CI/CD Pipeline
-
-The application uses GitHub Actions for CI/CD:
-
-1. On push to main branch:
-   - Build and test the application
-   - Build and push Docker images to Docker Hub
-   - Deploy to Unraid server
-
-2. Required GitHub Secrets:
-   - `DOCKER_HUB_USERNAME`: Your Docker Hub username
-   - `DOCKER_HUB_TOKEN`: Your Docker Hub access token
-   - `UNRAID_HOST`: Your Unraid server hostname or IP
-   - `UNRAID_USERNAME`: SSH username for Unraid server
-   - `UNRAID_SSH_KEY`: SSH private key for Unraid server
-
-## Unraid Deployment
-
-1. Set up a Docker container in Unraid using the docker-compose.yml file
-2. Configure the CI/CD pipeline to deploy to your Unraid server
-3. Ensure the required environment variables are set in Unraid
-
-## Database Migrations
-
-The application uses a simple migration system to manage database schema changes:
-
-1. Migrations are stored in the `timesheet-backend/migrations/` directory as SQL files
-2. The migration runner (`run-migrations.js`) tracks applied migrations in a `migrations` table
-3. Migrations are automatically applied when the backend container starts
-4. You can manually run migrations with:
-   ```bash
-   docker-compose exec backend npm run migrate
-   ```
+- The database file is located at `timesheet-backend/timesheet.db`
+- Schema is automatically created when the application starts
+- Sample data is inserted for testing purposes
 
 ## Environment Variables
 
 ### Frontend (.env.production)
-- `REACT_APP_API_BASE_URL`: URL for the backend API
+- `REACT_APP_API_BASE_URL`: URL for the backend API (default: http://localhost:3000/api)
 
 ### Backend (.env)
-- `DB_USER`: PostgreSQL username
-- `DB_HOST`: PostgreSQL host (db for Docker)
-- `DB_NAME`: PostgreSQL database name
-- `DB_PASSWORD`: PostgreSQL password
-- `DB_PORT`: PostgreSQL port (default: 5432)
+- `DB_PATH`: Path to the SQLite database file (default: timesheet.db)
 - `PORT`: Backend server port (default: 3000)
 
 ## Employee Pay History Feature
