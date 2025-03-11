@@ -157,3 +157,13 @@ export const createJob = async (jobData) => {
   }
   return response.json();
 };
+
+export const deleteInvoice = async (invoiceId) => {
+  const response = await fetch(`${API_BASE_URL}/invoices/${invoiceId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete invoice');
+  }
+  return true;
+};

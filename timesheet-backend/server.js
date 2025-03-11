@@ -522,9 +522,9 @@ app.get('/api/invoices/:id/details', (req, res) => {
       JOIN employees e ON t.employee_id = e.id
       JOIN jobs j ON t.job_id = j.id
       LEFT JOIN activities a ON t.activity_id = a.id
-      WHERE j.id = ? AND t.date BETWEEN date(?, '-7 days') AND ?
+      WHERE j.id = ? AND t.date <= ?
       ORDER BY t.date DESC
-    `).all(invoice.job_id, invoice.week_ending, invoice.week_ending);
+    `).all(invoice.job_id, invoice.week_ending);
     
     res.json({
       invoice,

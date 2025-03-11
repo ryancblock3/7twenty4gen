@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchInvoices, fetchInvoiceDetails, createInvoice } from '../api';
+import { fetchInvoices, fetchInvoiceDetails, createInvoice, deleteInvoice } from '../api';
 import { Button } from './ui/button';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,6 +17,7 @@ const InvoiceHistory = () => {
   const [groupedInvoices, setGroupedInvoices] = useState({});
   const [selectedWeekEnding, setSelectedWeekEnding] = useState(null);
   const [isCreatingRevision, setIsCreatingRevision] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const navigate = useNavigate();
 
   // Fetch invoices when component mounts or date range changes
@@ -130,6 +131,64 @@ const InvoiceHistory = () => {
       ...prev,
       [name]: value
     }));
+  };
+
+  // Handle invoice deletion
+  const handleDeleteInvoice = async (invoiceId) => {
+    if (!window.confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    try {
+      await deleteInvoice(invoiceId);
+      
+      // Refresh the invoice list
+      const data = await fetchInvoices(dateRange.startDate, dateRange.endDate);
+      setInvoices(data);
+      
+      // Clear the selected invoice
+      setSelectedInvoice(null);
+      setInvoiceDetails(null);
+      
+      // Update grouped invoices
+      const grouped = {};
+      data.forEach(invoice => {
+        const weekEnding = invoice.week_ending || 'No Date';
+        if (!grouped[weekEnding]) {
+          grouped[weekEnding] = [];
+        }
+        
+        // Check if this is a revision
+        const baseInvoiceNumber = invoice.invoice_number.split('-')[0];
+        const existingInvoices = grouped[weekEnding].filter(inv => 
+          inv.invoice_number.split('-')[0] === baseInvoiceNumber
+        );
+        
+        // Add revision number if needed
+        if (existingInvoices.length > 0) {
+          // This is a revision, check if it already has a revision number
+          if (!invoice.invoice_number.includes('-Rev')) {
+            invoice.displayNumber = `${invoice.invoice_number}-Rev${existingInvoices.length}`;
+          } else {
+            invoice.displayNumber = invoice.invoice_number;
+          }
+        } else {
+          invoice.displayNumber = invoice.invoice_number;
+        }
+        
+        grouped[weekEnding].push(invoice);
+      });
+      
+      setGroupedInvoices(grouped);
+      
+      alert('Invoice deleted successfully');
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      alert(`Failed to delete invoice: ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Create a new revision of an invoice
@@ -551,6 +610,16 @@ const InvoiceHistory = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
                           Edit
+                        </Button>
+                        <Button
+                          className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-all duration-200"
+                          onClick={() => handleDeleteInvoice(invoiceDetails.invoice.id)}
+                          disabled={isDeleting}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          {isDeleting ? 'Deleting...' : 'Delete'}
                         </Button>
                       </div>
                     </div>
