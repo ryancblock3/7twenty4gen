@@ -32,7 +32,22 @@ const InvoiceHistory = () => {
         // Group invoices by week ending date
         const grouped = {};
         data.forEach(invoice => {
-          const weekEnding = invoice.week_ending || 'No Date';
+          let weekEnding = invoice.week_ending || 'No Date';
+          
+          // Try to format the date if it's not already in a standard format
+          if (weekEnding !== 'No Date') {
+            try {
+              const weekEndingDate = new Date(weekEnding);
+              if (!isNaN(weekEndingDate.getTime())) {
+                // Valid date, format it as YYYY-MM-DD for consistent grouping
+                weekEnding = weekEndingDate.toISOString().split('T')[0];
+              }
+            } catch (error) {
+              console.error('Error formatting week ending date:', error);
+              // Keep the original value if parsing fails
+            }
+          }
+          
           if (!grouped[weekEnding]) {
             grouped[weekEnding] = [];
           }
@@ -154,7 +169,22 @@ const InvoiceHistory = () => {
       // Update grouped invoices
       const grouped = {};
       data.forEach(invoice => {
-        const weekEnding = invoice.week_ending || 'No Date';
+        let weekEnding = invoice.week_ending || 'No Date';
+        
+        // Try to format the date if it's not already in a standard format
+        if (weekEnding !== 'No Date') {
+          try {
+            const weekEndingDate = new Date(weekEnding);
+            if (!isNaN(weekEndingDate.getTime())) {
+              // Valid date, format it as YYYY-MM-DD for consistent grouping
+              weekEnding = weekEndingDate.toISOString().split('T')[0];
+            }
+          } catch (error) {
+            console.error('Error formatting week ending date:', error);
+            // Keep the original value if parsing fails
+          }
+        }
+        
         if (!grouped[weekEnding]) {
           grouped[weekEnding] = [];
         }
@@ -220,10 +250,36 @@ const InvoiceHistory = () => {
       const newInvoiceNumber = `${baseInvoiceNumber}-Rev${nextRevision}`;
       
       // Prepare the invoice data
+      // Format week ending date to ensure it's in YYYY-MM-DD format
+      let formattedWeekEnding = invoiceDetails.invoice.week_ending;
+      try {
+        // Try to parse the date - if it's already a valid date string, this will work
+        const weekEndingDate = new Date(invoiceDetails.invoice.week_ending);
+        if (!isNaN(weekEndingDate.getTime())) {
+          // Valid date, format it as YYYY-MM-DD
+          formattedWeekEnding = weekEndingDate.toISOString().split('T')[0];
+        } else {
+          // If it's not a valid date, try to parse it as MM/DD/YYYY
+          const parts = invoiceDetails.invoice.week_ending.split('/');
+          if (parts.length === 3) {
+            const month = parseInt(parts[0], 10);
+            const day = parseInt(parts[1], 10);
+            const year = parseInt(parts[2], 10);
+            const parsedDate = new Date(year, month - 1, day);
+            if (!isNaN(parsedDate.getTime())) {
+              formattedWeekEnding = parsedDate.toISOString().split('T')[0];
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error formatting week ending date:', error);
+        // Keep the original value if parsing fails
+      }
+      
       const invoiceData = {
         job_id: invoiceDetails.invoice.job_id,
         invoice_number: newInvoiceNumber,
-        week_ending: invoiceDetails.invoice.week_ending,
+        week_ending: formattedWeekEnding,
         total_amount: invoiceDetails.invoice.total_amount,
         invoice_date: new Date().toISOString().split('T')[0], // Today
         due_date: invoiceDetails.invoice.due_date

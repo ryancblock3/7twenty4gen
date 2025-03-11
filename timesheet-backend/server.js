@@ -95,6 +95,23 @@ function runMigrations() {
   `).run();
   
   db.prepare(`
+    CREATE TABLE IF NOT EXISTS invoice_details (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      invoice_id INTEGER NOT NULL,
+      employee_name TEXT NOT NULL,
+      activity_description TEXT,
+      regular_hours REAL,
+      overtime_hours REAL,
+      regular_rate REAL,
+      overtime_rate REAL,
+      total_amount REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
+    )
+  `).run();
+  
+  db.prepare(`
     CREATE TABLE IF NOT EXISTS employee_pay_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
@@ -509,27 +526,69 @@ app.get('/api/invoices/:id/details', (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
     
-    // Get timesheet entries for this invoice
-    const timesheetEntries = db.prepare(`
-      SELECT 
-        t.*,
-        e.first_name as employee_first_name,
-        e.last_name as employee_last_name,
-        e.ee_code as employee_code,
-        a.activity_code,
-        a.activity_description
-      FROM timesheets t
-      JOIN employees e ON t.employee_id = e.id
-      JOIN jobs j ON t.job_id = j.id
-      LEFT JOIN activities a ON t.activity_id = a.id
-      WHERE j.id = ? AND t.date <= ?
-      ORDER BY t.date DESC
-    `).all(invoice.job_id, invoice.week_ending);
+    // First, check if we have invoice details in the invoice_details table
+    const invoiceDetails = db.prepare(`
+      SELECT * FROM invoice_details WHERE invoice_id = ?
+    `).all(id);
     
-    res.json({
-      invoice,
-      timesheetEntries
-    });
+    if (invoiceDetails.length > 0) {
+      // If we have invoice details, return them
+      const timesheetEntries = invoiceDetails.map(detail => ({
+        id: detail.id,
+        employee_id: null,
+        job_id: invoice.job_id,
+        activity_id: null,
+        date: invoice.week_ending,
+        hours: detail.regular_hours + detail.overtime_hours,
+        pay_type: detail.overtime_hours > 0 ? "Overtime" : "Regular",
+        created_at: detail.created_at,
+        updated_at: detail.updated_at,
+        employee_first_name: detail.employee_name.split(' ')[0] || '',
+        employee_last_name: detail.employee_name.split(' ')[1] || '',
+        employee_code: "",
+        activity_code: "",
+        activity_description: detail.activity_description,
+        regular_hours: detail.regular_hours,
+        overtime_hours: detail.overtime_hours,
+        regular_rate: detail.regular_rate,
+        overtime_rate: detail.overtime_rate,
+        total: detail.total_amount
+      }));
+      
+      res.json({
+        invoice,
+        timesheetEntries
+      });
+    } else {
+      // If we don't have invoice details, try to get timesheet entries
+      // Calculate the start date (week beginning) - 6 days before week ending
+      const weekEndingDate = new Date(invoice.week_ending);
+      const weekBeginningDate = new Date(weekEndingDate);
+      weekBeginningDate.setDate(weekEndingDate.getDate() - 6);
+      const weekBeginning = weekBeginningDate.toISOString().split('T')[0];
+      
+      const timesheetEntries = db.prepare(`
+        SELECT 
+          t.*,
+          e.first_name as employee_first_name,
+          e.last_name as employee_last_name,
+          e.ee_code as employee_code,
+          a.activity_code,
+          a.activity_description
+        FROM timesheets t
+        JOIN employees e ON t.employee_id = e.id
+        JOIN jobs j ON t.job_id = j.id
+        LEFT JOIN activities a ON t.activity_id = a.id
+        WHERE j.id = ? AND t.date BETWEEN ? AND ?
+        ORDER BY t.date DESC
+      `).all(invoice.job_id, weekBeginning, invoice.week_ending);
+      
+      // Return the actual timesheet entries, even if the array is empty
+      res.json({
+        invoice,
+        timesheetEntries
+      });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'An error occurred while fetching invoice details' });
@@ -537,8 +596,12 @@ app.get('/api/invoices/:id/details', (req, res) => {
 });
 
 app.post('/api/invoices', (req, res) => {
-  const { job_id, invoice_number, week_ending, total_amount, invoice_date, due_date } = req.body;
+  const { job_id, invoice_number, week_ending, total_amount, invoice_date, due_date, invoice_details } = req.body;
   try {
+    // Start a transaction
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    // Insert the invoice
     const stmt = db.prepare(`
       INSERT INTO invoices 
       (job_id, invoice_number, week_ending, total_amount, invoice_date, due_date) 
@@ -549,13 +612,97 @@ app.post('/api/invoices', (req, res) => {
     
     if (info.changes > 0) {
       const newInvoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(info.lastInsertRowid);
+      
+      // If invoice details are provided, insert them
+      if (invoice_details && Array.isArray(invoice_details) && invoice_details.length > 0) {
+        const detailStmt = db.prepare(`
+          INSERT INTO invoice_details 
+          (invoice_id, employee_name, activity_description, regular_hours, overtime_hours, regular_rate, overtime_rate, total_amount) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        for (const detail of invoice_details) {
+          detailStmt.run(
+            newInvoice.id,
+            detail.employee_name,
+            detail.activity_description,
+            detail.regular_hours || 0,
+            detail.overtime_hours || 0,
+            detail.regular_rate || 0,
+            detail.overtime_rate || 0,
+            detail.total_amount || 0
+          );
+        }
+      }
+      
+      // Commit the transaction
+      db.prepare('COMMIT').run();
+      
       res.status(201).json(newInvoice);
     } else {
+      // Rollback the transaction
+      db.prepare('ROLLBACK').run();
       throw new Error('Failed to insert invoice');
     }
   } catch (err) {
+    // Rollback the transaction
+    db.prepare('ROLLBACK').run();
     console.error(err);
     res.status(500).json({ error: 'An error occurred while creating the invoice' });
+  }
+});
+
+// Add invoice details to an existing invoice
+app.post('/api/invoices/:id/details', (req, res) => {
+  const { id } = req.params;
+  const { invoice_details } = req.body;
+  
+  if (!invoice_details || !Array.isArray(invoice_details) || invoice_details.length === 0) {
+    return res.status(400).json({ error: 'Invoice details are required' });
+  }
+  
+  try {
+    // Check if the invoice exists
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    
+    // Start a transaction
+    db.prepare('BEGIN TRANSACTION').run();
+    
+    // Delete any existing invoice details
+    db.prepare('DELETE FROM invoice_details WHERE invoice_id = ?').run(id);
+    
+    // Insert the new invoice details
+    const detailStmt = db.prepare(`
+      INSERT INTO invoice_details 
+      (invoice_id, employee_name, activity_description, regular_hours, overtime_hours, regular_rate, overtime_rate, total_amount) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    for (const detail of invoice_details) {
+      detailStmt.run(
+        id,
+        detail.employee_name,
+        detail.activity_description,
+        detail.regular_hours || 0,
+        detail.overtime_hours || 0,
+        detail.regular_rate || 0,
+        detail.overtime_rate || 0,
+        detail.total_amount || 0
+      );
+    }
+    
+    // Commit the transaction
+    db.prepare('COMMIT').run();
+    
+    res.status(201).json({ message: 'Invoice details added successfully' });
+  } catch (err) {
+    // Rollback the transaction
+    db.prepare('ROLLBACK').run();
+    console.error(err);
+    res.status(500).json({ error: 'An error occurred while adding invoice details' });
   }
 });
 

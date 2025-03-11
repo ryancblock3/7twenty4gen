@@ -37,6 +37,17 @@ const CombinedInvoice = ({ invoices }) => {
   const formatNumber = (value) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   };
+  
+  const formatDate = (dateString) => {
+    if (!dateString) return '-';
+    try {
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
+      return new Date(dateString).toLocaleDateString(undefined, options);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return dateString; // Return the original string if parsing fails
+    }
+  };
 
   return (
     <div className="combined-invoice-container max-w-4xl mx-auto p-8 bg-background text-foreground shadow-lg rounded-lg print:w-full print:max-w-none">
@@ -47,7 +58,7 @@ const CombinedInvoice = ({ invoices }) => {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold">Twenty4 Services LLC</h1>
           <p className="text-xl">Combined Invoice</p>
-          <p>Week Ending: {invoices[0]?.weekEnding || 'N/A'}</p>
+          <p>Week Ending: {invoices[0]?.weekEnding ? formatDate(invoices[0].weekEnding) : 'N/A'}</p>
         </div>
 
         <Table>

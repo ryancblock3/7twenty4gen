@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from './ui/table';
 import { Button } from './ui/button';
 import html2pdf from 'html2pdf.js';
-import { createInvoice, fetchJobs, createJob } from '../api';
+import { createInvoice, fetchJobs, createJob, addInvoiceDetails } from '../api';
 
 const logoUrl = '/logo.png';
 
@@ -104,6 +104,32 @@ const JobInvoice = ({ jobData, invoiceNumber, businessInfo, onSaveSuccess }) => 
       dueDate.setDate(dueDate.getDate() + 30); // Net 30
       const dueDateFormatted = dueDate.toISOString().split('T')[0];
       
+      // Format week ending date to ensure it's in YYYY-MM-DD format
+      let formattedWeekEnding = editedData.weekEnding;
+      try {
+        // Try to parse the date - if it's already a valid date string, this will work
+        const weekEndingDate = new Date(editedData.weekEnding);
+        if (!isNaN(weekEndingDate.getTime())) {
+          // Valid date, format it as YYYY-MM-DD
+          formattedWeekEnding = weekEndingDate.toISOString().split('T')[0];
+        } else {
+          // If it's not a valid date, try to parse it as MM/DD/YYYY
+          const parts = editedData.weekEnding.split('/');
+          if (parts.length === 3) {
+            const month = parseInt(parts[0], 10);
+            const day = parseInt(parts[1], 10);
+            const year = parseInt(parts[2], 10);
+            const parsedDate = new Date(year, month - 1, day);
+            if (!isNaN(parsedDate.getTime())) {
+              formattedWeekEnding = parsedDate.toISOString().split('T')[0];
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error formatting week ending date:', error);
+        // Keep the original value if parsing fails
+      }
+      
       // Find job_id based on job_number
       let job_id;
       const matchingJob = jobs.find(job => job.job_number === editedData.jobNumber);
@@ -133,14 +159,38 @@ const JobInvoice = ({ jobData, invoiceNumber, businessInfo, onSaveSuccess }) => 
       const invoiceData = {
         job_id,
         invoice_number: invoiceNumber,
-        week_ending: editedData.weekEnding,
+        week_ending: formattedWeekEnding,
         total_amount: totalAmount,
         invoice_date: today,
         due_date: dueDateFormatted
       };
 
-      // Save to database
-      await createInvoice(invoiceData);
+      // Save invoice to database
+      const savedInvoice = await createInvoice(invoiceData);
+      
+      // Prepare invoice details for saving
+      const invoiceDetails = [];
+      
+      // Convert the employee data to invoice details format
+      Object.entries(editedData.employees).forEach(([employeeName, employeeData]) => {
+        Object.entries(employeeData.activities).forEach(([activityDesc, activityData]) => {
+          invoiceDetails.push({
+            employee_name: employeeName,
+            activity_description: activityDesc,
+            regular_hours: activityData.regularHours || 0,
+            overtime_hours: activityData.overtimeHours || 0,
+            regular_rate: activityData.regularRate || 0,
+            overtime_rate: activityData.overtimeRate || 0,
+            total_amount: parseFloat((activityData.regularTotal + activityData.overtimeTotal).toFixed(2))
+          });
+        });
+      });
+      
+      // Save invoice details to database
+      if (invoiceDetails.length > 0) {
+        await addInvoiceDetails(savedInvoice.id, invoiceDetails);
+      }
+      
       if (onSaveSuccess) {
         onSaveSuccess(invoiceNumber);
       }

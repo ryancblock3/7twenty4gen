@@ -96,10 +96,36 @@ const ExcelInvoiceGenerator = () => {
       const activityDescription = row['Activity Description'] || '';
       
       if (!invoices[invoiceNumber]) {
+        // Get the week ending date and ensure it's in a valid format
+        let weekEnding = row['WEEK ENDING'];
+        try {
+          // Try to parse the date - if it's already a valid date string, this will work
+          const weekEndingDate = new Date(weekEnding);
+          if (!isNaN(weekEndingDate.getTime())) {
+            // Valid date, format it as YYYY-MM-DD
+            weekEnding = weekEndingDate.toISOString().split('T')[0];
+          } else {
+            // If it's not a valid date, try to parse it as MM/DD/YYYY
+            const parts = weekEnding.split('/');
+            if (parts.length === 3) {
+              const month = parseInt(parts[0], 10);
+              const day = parseInt(parts[1], 10);
+              const year = parseInt(parts[2], 10);
+              const parsedDate = new Date(year, month - 1, day);
+              if (!isNaN(parsedDate.getTime())) {
+                weekEnding = parsedDate.toISOString().split('T')[0];
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error formatting week ending date:', error);
+          // Keep the original value if parsing fails
+        }
+        
         invoices[invoiceNumber] = {
           jobName: row['JOB NAME'],
           jobNumber: row['JOB NUMBER'],
-          weekEnding: row['WEEK ENDING'],
+          weekEnding: weekEnding,
           employees: {},
           clientName: "CEC Facilities Group",
           clientAddress: "1275 Valley View Lane",
@@ -141,7 +167,7 @@ const ExcelInvoiceGenerator = () => {
 
       const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
 
-      if (payType.toLowerCase() === 'regular') {
+      if (payType && payType.toLowerCase() === 'regular') {
         activity.regularHours += hours;
         activity.regularRate = burdenedRate;
         // Round to 2 decimal places to match Excel precision
@@ -149,7 +175,7 @@ const ExcelInvoiceGenerator = () => {
         if (activity.overtimeRate === 0) {
           activity.overtimeRate = burdenedRate * 1.5;
         }
-      } else if (payType.toLowerCase() === 'overtime') {
+      } else if (payType && payType.toLowerCase() === 'overtime') {
         activity.overtimeHours += hours;
         activity.overtimeRate = burdenedRate;
         // Round to 2 decimal places to match Excel precision
@@ -177,10 +203,36 @@ const ExcelInvoiceGenerator = () => {
       const activityDescription = row[headers.indexOf('Activity Description')] || '';
       
       if (!invoices[invoiceNumber]) {
+        // Get the week ending date and ensure it's in a valid format
+        let weekEnding = row[headers.indexOf('WEEK ENDING')];
+        try {
+          // Try to parse the date - if it's already a valid date string, this will work
+          const weekEndingDate = new Date(weekEnding);
+          if (!isNaN(weekEndingDate.getTime())) {
+            // Valid date, format it as YYYY-MM-DD
+            weekEnding = weekEndingDate.toISOString().split('T')[0];
+          } else {
+            // If it's not a valid date, try to parse it as MM/DD/YYYY
+            const parts = weekEnding.split('/');
+            if (parts.length === 3) {
+              const month = parseInt(parts[0], 10);
+              const day = parseInt(parts[1], 10);
+              const year = parseInt(parts[2], 10);
+              const parsedDate = new Date(year, month - 1, day);
+              if (!isNaN(parsedDate.getTime())) {
+                weekEnding = parsedDate.toISOString().split('T')[0];
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error formatting week ending date:', error);
+          // Keep the original value if parsing fails
+        }
+        
         invoices[invoiceNumber] = {
           jobName: row[headers.indexOf('JOB NAME')],
           jobNumber: row[headers.indexOf('JOB NUMBER')],
-          weekEnding: row[headers.indexOf('WEEK ENDING')],
+          weekEnding: weekEnding,
           employees: {},
           clientName: "CEC Facilities Group",
           clientAddress: "1275 Valley View Lane",
@@ -216,7 +268,7 @@ const ExcelInvoiceGenerator = () => {
 
       const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
 
-      if (payType.toLowerCase() === 'regular') {
+      if (payType && payType.toLowerCase() === 'regular') {
         activity.regularHours += hours;
         activity.regularRate = burdenedRate;
         // Round to 2 decimal places to match Excel precision
@@ -224,7 +276,7 @@ const ExcelInvoiceGenerator = () => {
         if (activity.overtimeRate === 0) {
           activity.overtimeRate = burdenedRate * 1.5;
         }
-      } else if (payType.toLowerCase() === 'overtime') {
+      } else if (payType && payType.toLowerCase() === 'overtime') {
         activity.overtimeHours += hours;
         activity.overtimeRate = burdenedRate;
         // Round to 2 decimal places to match Excel precision

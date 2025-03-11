@@ -144,6 +144,20 @@ export const createInvoice = async (invoiceData) => {
   return response.json();
 };
 
+export const addInvoiceDetails = async (invoiceId, invoiceDetails) => {
+  const response = await fetch(`${API_BASE_URL}/invoices/${invoiceId}/details`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ invoice_details: invoiceDetails }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to add invoice details');
+  }
+  return response.json();
+};
+
 export const createJob = async (jobData) => {
   const response = await fetch(`${API_BASE_URL}/jobs`, {
     method: 'POST',
