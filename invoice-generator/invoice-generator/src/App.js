@@ -9,6 +9,7 @@ import EmployeeInformation from './components/EmployeeInformation';
 import TimesheetHistory from './components/TimesheetHistory';
 import InvoiceHistory from './components/InvoiceHistory';
 import InvoiceEditor from './components/InvoiceEditor';
+import NewCompanyInvoice from './components/NewCompanyInvoice';
 import './print.css';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
             <Route path="/timesheet-history" element={<TimesheetHistory />} />
             <Route path="/invoice-history" element={<InvoiceHistory />} />
             <Route path="/invoice-editor/:id" element={<InvoiceEditor />} />
+            <Route path="/new-company-invoice" element={<NewCompanyInvoice />} />
           </Routes>
         </div>
       </div>
@@ -65,6 +67,17 @@ const Home = () => (
       
       <div className="p-8 md:p-10">
         <div className="grid md:grid-cols-2 gap-8">
+          <FeatureCard 
+            title="BTC Solutions Invoice" 
+            description="Generate invoices with BTC prefix for Build.Test.Connect Solutions LLC"
+            icon={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            link="/new-company-invoice"
+          />
+          
           <FeatureCard 
             title="Invoice Generator" 
             description="Generate professional invoices from Excel timesheet data"

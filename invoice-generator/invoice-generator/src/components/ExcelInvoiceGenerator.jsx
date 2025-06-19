@@ -13,6 +13,8 @@ const ExcelInvoiceGenerator = () => {
   const invoiceRefs = useRef({});
   const [savedInvoices, setSavedInvoices] = useState({});
   const [notification, setNotification] = useState(null);
+  const [useBtcPrefix, setUseBtcPrefix] = useState(false);
+  const [useRelPrefix, setUseRelPrefix] = useState(false);
   
   // Check for processed timesheet data in localStorage on component mount
   useEffect(() => {
@@ -92,8 +94,10 @@ const ExcelInvoiceGenerator = () => {
       const invoiceNumber = row['INV #'];
       const employee = row['EMPLOYEE'];
       const payType = row['PAY TYPE'];
+      // Only use activity code and description if at least one of them is provided
       const activityCode = row['Activity Code'] || '';
       const activityDescription = row['Activity Description'] || '';
+      const hasActivityMapping = activityCode.trim() !== '' || activityDescription.trim() !== '';
       
       if (!invoices[invoiceNumber]) {
         // Get the week ending date and ensure it's in a valid format
@@ -137,7 +141,8 @@ const ExcelInvoiceGenerator = () => {
 
       if (!invoices[invoiceNumber].employees[employee]) {
         invoices[invoiceNumber].employees[employee] = {
-          activities: {}
+          activities: {},
+          expenses: []
         };
       }
 
@@ -150,40 +155,72 @@ const ExcelInvoiceGenerator = () => {
         parseFloat(row['BURDENED RATE'].replace(/[^\d.-]/g, '')) : 
         (typeof row['BURDENED RATE'] === 'number' ? row['BURDENED RATE'] : 0);
 
-      const activityKey = `${activityCode} - ${activityDescription}`;
+      // Only create activity entries if there's an activity mapping
+      if (hasActivityMapping) {
+        const activityKey = `${activityCode} - ${activityDescription}`;
 
-      if (!invoices[invoiceNumber].employees[employee].activities[activityKey]) {
-        invoices[invoiceNumber].employees[employee].activities[activityKey] = {
-          activityCode,
-          activityDescription,
-          regularHours: 0,
-          overtimeHours: 0,
-          regularRate: 0,
-          overtimeRate: 0,
-          regularTotal: 0,
-          overtimeTotal: 0
-        };
+        if (!invoices[invoiceNumber].employees[employee].activities[activityKey]) {
+          invoices[invoiceNumber].employees[employee].activities[activityKey] = {
+            activityCode,
+            activityDescription,
+            regularHours: 0,
+            overtimeHours: 0,
+            regularRate: 0,
+            overtimeRate: 0,
+            regularTotal: 0,
+            overtimeTotal: 0
+          };
+        }
+
+        const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
+
+        if (payType && payType.toLowerCase() === 'regular') {
+          activity.regularHours += hours;
+          activity.regularRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
+          if (activity.overtimeRate === 0) {
+            activity.overtimeRate = burdenedRate * 1.5;
+          }
+        } else if (payType && payType.toLowerCase() === 'overtime') {
+          activity.overtimeHours += hours;
+          activity.overtimeRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
+          if (activity.regularRate === 0) {
+            activity.regularRate = burdenedRate / 1.5;
+          }
+        }
+      } else {
+        // If no activity mapping, just add the hours and rates directly to the employee
+        if (!invoices[invoiceNumber].employees[employee].regularHours) {
+          invoices[invoiceNumber].employees[employee].regularHours = 0;
+          invoices[invoiceNumber].employees[employee].overtimeHours = 0;
+          invoices[invoiceNumber].employees[employee].regularRate = 0;
+          invoices[invoiceNumber].employees[employee].overtimeRate = 0;
+          invoices[invoiceNumber].employees[employee].regularTotal = 0;
+          invoices[invoiceNumber].employees[employee].overtimeTotal = 0;
+        }
+
+        if (payType && payType.toLowerCase() === 'regular') {
+          invoices[invoiceNumber].employees[employee].regularHours += hours;
+          invoices[invoiceNumber].employees[employee].regularRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          invoices[invoiceNumber].employees[employee].regularTotal = parseFloat((invoices[invoiceNumber].employees[employee].regularHours * burdenedRate).toFixed(2));
+          if (invoices[invoiceNumber].employees[employee].overtimeRate === 0) {
+            invoices[invoiceNumber].employees[employee].overtimeRate = burdenedRate * 1.5;
+          }
+        } else if (payType && payType.toLowerCase() === 'overtime') {
+          invoices[invoiceNumber].employees[employee].overtimeHours += hours;
+          invoices[invoiceNumber].employees[employee].overtimeRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          invoices[invoiceNumber].employees[employee].overtimeTotal = parseFloat((invoices[invoiceNumber].employees[employee].overtimeHours * burdenedRate).toFixed(2));
+          if (invoices[invoiceNumber].employees[employee].regularRate === 0) {
+            invoices[invoiceNumber].employees[employee].regularRate = burdenedRate / 1.5;
+          }
+        }
       }
 
-      const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
-
-      if (payType && payType.toLowerCase() === 'regular') {
-        activity.regularHours += hours;
-        activity.regularRate = burdenedRate;
-        // Round to 2 decimal places to match Excel precision
-        activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
-        if (activity.overtimeRate === 0) {
-          activity.overtimeRate = burdenedRate * 1.5;
-        }
-      } else if (payType && payType.toLowerCase() === 'overtime') {
-        activity.overtimeHours += hours;
-        activity.overtimeRate = burdenedRate;
-        // Round to 2 decimal places to match Excel precision
-        activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
-        if (activity.regularRate === 0) {
-          activity.regularRate = burdenedRate / 1.5;
-        }
-      }
     }
 
     return invoices;
@@ -199,8 +236,10 @@ const ExcelInvoiceGenerator = () => {
       const invoiceNumber = row[headers.indexOf('INV #')];
       const employee = row[headers.indexOf('EMPLOYEE')];
       const payType = row[headers.indexOf('PAY TYPE')];
+      // Only use activity code and description if at least one of them is provided
       const activityCode = row[headers.indexOf('Activity Code')] || '';
       const activityDescription = row[headers.indexOf('Activity Description')] || '';
+      const hasActivityMapping = activityCode.trim() !== '' || activityDescription.trim() !== '';
       
       if (!invoices[invoiceNumber]) {
         // Get the week ending date and ensure it's in a valid format
@@ -244,47 +283,80 @@ const ExcelInvoiceGenerator = () => {
 
       if (!invoices[invoiceNumber].employees[employee]) {
         invoices[invoiceNumber].employees[employee] = {
-          activities: {}
+          activities: {},
+          expenses: []
         };
       }
 
       const hours = parseFloat(row[headers.indexOf('HOURS')]) || 0;
       const burdenedRate = parseFloat(row[headers.indexOf('BURDENED RATE')]) || 0;
 
-      const activityKey = `${activityCode} - ${activityDescription}`;
+      // Only create activity entries if there's an activity mapping
+      if (hasActivityMapping) {
+        const activityKey = `${activityCode} - ${activityDescription}`;
 
-      if (!invoices[invoiceNumber].employees[employee].activities[activityKey]) {
-        invoices[invoiceNumber].employees[employee].activities[activityKey] = {
-          activityCode,
-          activityDescription,
-          regularHours: 0,
-          overtimeHours: 0,
-          regularRate: 0,
-          overtimeRate: 0,
-          regularTotal: 0,
-          overtimeTotal: 0
-        };
+        if (!invoices[invoiceNumber].employees[employee].activities[activityKey]) {
+          invoices[invoiceNumber].employees[employee].activities[activityKey] = {
+            activityCode,
+            activityDescription,
+            regularHours: 0,
+            overtimeHours: 0,
+            regularRate: 0,
+            overtimeRate: 0,
+            regularTotal: 0,
+            overtimeTotal: 0
+          };
+        }
+
+        const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
+
+        if (payType && payType.toLowerCase() === 'regular') {
+          activity.regularHours += hours;
+          activity.regularRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
+          if (activity.overtimeRate === 0) {
+            activity.overtimeRate = burdenedRate * 1.5;
+          }
+        } else if (payType && payType.toLowerCase() === 'overtime') {
+          activity.overtimeHours += hours;
+          activity.overtimeRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
+          if (activity.regularRate === 0) {
+            activity.regularRate = burdenedRate / 1.5;
+          }
+        }
+      } else {
+        // If no activity mapping, just add the hours and rates directly to the employee
+        if (!invoices[invoiceNumber].employees[employee].regularHours) {
+          invoices[invoiceNumber].employees[employee].regularHours = 0;
+          invoices[invoiceNumber].employees[employee].overtimeHours = 0;
+          invoices[invoiceNumber].employees[employee].regularRate = 0;
+          invoices[invoiceNumber].employees[employee].overtimeRate = 0;
+          invoices[invoiceNumber].employees[employee].regularTotal = 0;
+          invoices[invoiceNumber].employees[employee].overtimeTotal = 0;
+        }
+
+        if (payType && payType.toLowerCase() === 'regular') {
+          invoices[invoiceNumber].employees[employee].regularHours += hours;
+          invoices[invoiceNumber].employees[employee].regularRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          invoices[invoiceNumber].employees[employee].regularTotal = parseFloat((invoices[invoiceNumber].employees[employee].regularHours * burdenedRate).toFixed(2));
+          if (invoices[invoiceNumber].employees[employee].overtimeRate === 0) {
+            invoices[invoiceNumber].employees[employee].overtimeRate = burdenedRate * 1.5;
+          }
+        } else if (payType && payType.toLowerCase() === 'overtime') {
+          invoices[invoiceNumber].employees[employee].overtimeHours += hours;
+          invoices[invoiceNumber].employees[employee].overtimeRate = burdenedRate;
+          // Round to 2 decimal places to match Excel precision
+          invoices[invoiceNumber].employees[employee].overtimeTotal = parseFloat((invoices[invoiceNumber].employees[employee].overtimeHours * burdenedRate).toFixed(2));
+          if (invoices[invoiceNumber].employees[employee].regularRate === 0) {
+            invoices[invoiceNumber].employees[employee].regularRate = burdenedRate / 1.5;
+          }
+        }
       }
 
-      const activity = invoices[invoiceNumber].employees[employee].activities[activityKey];
-
-      if (payType && payType.toLowerCase() === 'regular') {
-        activity.regularHours += hours;
-        activity.regularRate = burdenedRate;
-        // Round to 2 decimal places to match Excel precision
-        activity.regularTotal = parseFloat((activity.regularHours * activity.regularRate).toFixed(2));
-        if (activity.overtimeRate === 0) {
-          activity.overtimeRate = burdenedRate * 1.5;
-        }
-      } else if (payType && payType.toLowerCase() === 'overtime') {
-        activity.overtimeHours += hours;
-        activity.overtimeRate = burdenedRate;
-        // Round to 2 decimal places to match Excel precision
-        activity.overtimeTotal = parseFloat((activity.overtimeHours * activity.overtimeRate).toFixed(2));
-        if (activity.regularRate === 0) {
-          activity.regularRate = burdenedRate / 1.5;
-        }
-      }
     }
 
     return invoices;
@@ -302,7 +374,15 @@ const ExcelInvoiceGenerator = () => {
     for (const [invNumber, jobData] of Object.entries(invoices)) {
       const element = invoiceRefs.current[invNumber];
       if (element) {
-        const fileName = `INV#${invNumber} ${jobData.jobNumber} ${jobData.jobName}.pdf`;
+        // Format invoice number with prefix if enabled and doesn't already have it
+        let formattedInvoiceNumber = invNumber;
+        if (useBtcPrefix && !invNumber.includes('BTC-')) {
+          formattedInvoiceNumber = `BTC-${invNumber}`;
+        } else if (useRelPrefix && !invNumber.includes('REL-')) {
+          formattedInvoiceNumber = `REL-${invNumber}`;
+        }
+        
+        const fileName = `INV#${formattedInvoiceNumber} ${jobData.jobNumber} ${jobData.jobName}.pdf`;
         const opt = {
           margin: 10,
           filename: fileName,
@@ -450,7 +530,7 @@ const ExcelInvoiceGenerator = () => {
             <p className="text-center text-blue-100 mt-1">Ready to download or print</p>
           </div>
           <div className="p-6">
-            <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <div className="flex flex-col sm:flex-row justify-center gap-4 items-center">
               <Button 
                 onClick={handlePrintAll} 
                 className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg shadow-md transition-all duration-200 flex items-center justify-center"
@@ -460,6 +540,40 @@ const ExcelInvoiceGenerator = () => {
                 </svg>
                 Download All Invoices as PDFs
               </Button>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex items-center bg-blue-50 p-3 rounded-lg border border-blue-200">
+                  <input
+                    type="checkbox"
+                    id="btcPrefix"
+                    checked={useBtcPrefix}
+                    onChange={(e) => {
+                      setUseBtcPrefix(e.target.checked);
+                      if (e.target.checked) setUseRelPrefix(false);
+                    }}
+                    className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  />
+                  <label htmlFor="btcPrefix" className="ml-2 text-sm font-medium text-gray-700">
+                    Use BTC prefix for invoice numbers
+                  </label>
+                </div>
+                
+                <div className="flex items-center bg-green-50 p-3 rounded-lg border border-green-200">
+                  <input
+                    type="checkbox"
+                    id="relPrefix"
+                    checked={useRelPrefix}
+                    onChange={(e) => {
+                      setUseRelPrefix(e.target.checked);
+                      if (e.target.checked) setUseBtcPrefix(false);
+                    }}
+                    className="h-5 w-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                  />
+                  <label htmlFor="relPrefix" className="ml-2 text-sm font-medium text-gray-700">
+                    Use REL prefix for invoice numbers
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -475,6 +589,7 @@ const ExcelInvoiceGenerator = () => {
                 let total = 0;
 
                 Object.values(data.employees).forEach(employee => {
+                  // Add hours and rates from activities
                   Object.values(employee.activities).forEach(activity => {
                     // Round hours to 2 decimal places for consistency
                     regularHours = parseFloat((regularHours + (activity.regularHours || 0)).toFixed(2));
@@ -482,10 +597,20 @@ const ExcelInvoiceGenerator = () => {
                     // Round the sum to 2 decimal places to match Excel precision
                     total = parseFloat((total + (activity.regularTotal + activity.overtimeTotal)).toFixed(2));
                   });
+                  
+                  // Add expenses to total
+                  if (employee.expenses && employee.expenses.length > 0) {
+                    employee.expenses.forEach(expense => {
+                      const expenseAmount = parseFloat(expense.amount || 0);
+                      total = parseFloat((total + expenseAmount).toFixed(2));
+                    });
+                  }
                 });
 
                 return {
-                  invNumber,
+                  invNumber: useBtcPrefix && !invNumber.includes('BTC-') ? `BTC-${invNumber}` :
+                            useRelPrefix && !invNumber.includes('REL-') ? `REL-${invNumber}` :
+                            invNumber,
                   jobName: data.jobName,
                   jobNumber: data.jobNumber,
                   regularHours,
@@ -502,7 +627,9 @@ const ExcelInvoiceGenerator = () => {
               <div ref={el => invoiceRefs.current[invNumber] = el}>
                 <JobInvoice 
                   jobData={jobData} 
-                  invoiceNumber={invNumber} 
+                  invoiceNumber={invNumber}
+                  useBtcPrefix={useBtcPrefix}
+                  useRelPrefix={useRelPrefix}
                   businessInfo={businessInfo}
                   onSaveSuccess={(invoiceNumber) => {
                     setSavedInvoices(prev => ({
